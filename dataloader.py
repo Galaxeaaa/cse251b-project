@@ -41,7 +41,7 @@ def my_collate(batch):
     return [inp, out]
 
 
-def loadData(path, city_index_path, split=0.9, cutoff=None):
+def loadData(path, city_index_path, batch_size = 4, split=0.9, cutoff=None):
     # split train and valid data
     # load st most cutoff sample (only when get city data)
 
@@ -88,7 +88,7 @@ def loadData(path, city_index_path, split=0.9, cutoff=None):
     PIT_train_dataset = ADataset(PIT_list, 0, PIT_S)
     PIT_valid_dataset = ADataset(PIT_list, PIT_S, len(PIT_list))
 
-    batch_sz = 4
+    batch_sz = batch_size
 
     MIA_train_loader = DataLoader(
         MIA_train_dataset,
