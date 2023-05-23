@@ -53,9 +53,9 @@ def loadData(path, city_index_path, batch_size = 4, split=0.9, cutoff=None):
     ):
         print("Read City File")
         with open(city_index_path + "MIA.pkl", "rb") as file:
-            MIA_list = pickle.load(file)
+            MIA_list = pickle.load(file)[:int(cutoff/2)]
         with open(city_index_path + "PIT.pkl", "rb") as file:
-            PIT_list = pickle.load(file)
+            PIT_list = pickle.load(file)[:int(cutoff/2)]
     else:
         print("Get City File")
         pkl_list = glob(os.path.join(path, "*"))[:cutoff]
