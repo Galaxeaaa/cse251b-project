@@ -33,7 +33,7 @@ class ADataset(Dataset):
         return data
 
 
-def my_collate(batch):
+def default_collate(batch):
     """collate lists of samples into batches, create [ batch_sz x agent_sz x seq_len x feature]"""
     inp = [numpy.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
     inp = numpy.array(inp)
@@ -43,49 +43,19 @@ def my_collate(batch):
     out = torch.LongTensor(out)
     return [inp, out]
 
-
-def collate_normalize(batch):
-    """collate lists of samples into batches, create [ batch_sz x agent_sz x seq_len x feature]"""
-    """!!!UNFINISHED!!! DONT USE THIS FUNCTION!!!"""
-
-    def normalize(pv):
-        res = pv.copy()
-        # normalize p_in and scale v_in in each scene
-        for scene_i in range(len(pv)):
-            mean_p = numpy.mean(res[scene_i][:, :, 0], axis=0)
-            res[scene_i][:, :, 0] = pv[scene_i][:, :, 0] - mean_p
-            max_p = numpy.max(res[scene_i][:, :, 0])
-            min_p = numpy.min(res[scene_i][:, :, 0])
-            scale = max_p - min_p / 2
-            res[scene_i][:, :, 0] = (pv[scene_i][:, :, 0] - min_p) / scale - 1
-            res[scene_i][:, :, 1] = pv[scene_i][:, :, 1] / scale
-
-    inp = [numpy.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
-    inp = numpy.array(inp)
-    normalize(inp)
-    out = [numpy.dstack([scene["p_out"], scene["v_out"]]) for scene in batch]
-    out = numpy.array(out)
-    normalize(out)
-    inp = torch.LongTensor(inp)
-    out = torch.LongTensor(out)
-    return [inp, out]
 
 def collate_with_len(batch):
     return
 
 
-def loadData(path, city_index_path, batch_size=4, split=0.9, cutoff=None, collate_fn = "my_collate"):
+def loadData(
+    path, city_index_path, batch_size=4, split=0.9, cutoff=None, collate_fn=default_collate
+):
     # split train and valid data
     # load at most cutoff sample (only when get city data)
 
-    if collate_fn == "my_collate":
-        fn_collate = my_collate
-    elif collate_fn == "collate_normalize":
-        fn_collate = collate_normalize
-    elif collate_fn == "collate_with_len":
-        fn_collate = collate_with_len
-    else:
-        fn_collate = my_collate
+    if collate_fn is None:
+        collate_fn = default_collate
 
     if not os.path.exists(path):
         raise Exception("Wrong Path:" + path)
@@ -139,28 +109,28 @@ def loadData(path, city_index_path, batch_size=4, split=0.9, cutoff=None, collat
         MIA_train_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=fn_collate,
+        collate_fn=collate_fn,
         num_workers=0,
     )
     PIT_train_loader = DataLoader(
         PIT_train_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=fn_collate,
+        collate_fn=collate_fn,
         num_workers=0,
     )
     MIA_valid_loader = DataLoader(
         MIA_valid_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=fn_collate,
+        collate_fn=collate_fn,
         num_workers=0,
     )
     PIT_valid_loader = DataLoader(
         PIT_valid_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=fn_collate,
+        collate_fn=collate_fn,
         num_workers=0,
     )
 
