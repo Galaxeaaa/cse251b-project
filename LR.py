@@ -2,6 +2,7 @@ import dataloader
 from sklearn.linear_model import LinearRegression
 import torch
 import torch.nn as nn
+import matplotlib.pyplot as plt
 
 
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
@@ -39,3 +40,29 @@ for i_batch, sample_batch in enumerate(MIA_valid_loader):
 
 print("Average MSE Loss: ",sum(tlosses)/len(tlosses))
     
+'''visualization'''
+
+sample_idx = 99
+traj_idx = 3
+
+sample = MIA_valid_dataset[sample_idx]
+
+p_in,p_out = sample['p_in'],sample['p_out']
+
+px,py = p_in[traj_idx,:,0],p_in[traj_idx,:,1]
+outx,outy = p_out[traj_idx,:,0],p_out[traj_idx,:,1]
+
+plt.scatter(px,py,label = "Input")
+
+lrx.fit(X1,px)
+lry.fit(X1,py)
+px_pred = lrx.predict(X2)
+py_pred = lry.predict(X2)
+
+plt.scatter(px_pred,py_pred,label = "Predict")
+
+plt.scatter(outx,outy,label = "Groudtruth")
+
+plt.legend()
+
+plt.show()
