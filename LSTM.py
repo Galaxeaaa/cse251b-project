@@ -163,3 +163,5 @@ if mode == "test":
     # print(predict,out)
 
     print("Average MSE Loss: ",sum(tlosses)/len(tlosses))
+
+    
