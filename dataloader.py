@@ -59,10 +59,22 @@ def collate_normalize(batch):
     out = torch.LongTensor(out)
     inp = inp / 300
 
+def collate_with_len(batch):
+    return
 
-def loadData(path, city_index_path, batch_size=4, split=0.9, cutoff=None, normalize=False):
+
+def loadData(path, city_index_path, batch_size=4, split=0.9, cutoff=None, collate_fn = "my_collate"):
     # split train and valid data
     # load at most cutoff sample (only when get city data)
+
+    if collate_fn == "my_collate":
+        fn_collate = my_collate
+    elif collate_fn == "collate_normalize":
+        fn_collate = collate_normalize
+    elif collate_fn == "collate_with_len":
+        fn_collate = collate_with_len
+    else:
+        fn_collate = my_collate
 
     if not os.path.exists(path):
         raise Exception("Wrong Path:" + path)
@@ -116,28 +128,28 @@ def loadData(path, city_index_path, batch_size=4, split=0.9, cutoff=None, normal
         MIA_train_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=my_collate,
+        collate_fn=fn_collate,
         num_workers=0,
     )
     PIT_train_loader = DataLoader(
         PIT_train_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=my_collate,
+        collate_fn=fn_collate,
         num_workers=0,
     )
     MIA_valid_loader = DataLoader(
         MIA_valid_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=my_collate,
+        collate_fn=fn_collate,
         num_workers=0,
     )
     PIT_valid_loader = DataLoader(
         PIT_valid_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=my_collate,
+        collate_fn=fn_collate,
         num_workers=0,
     )
 
