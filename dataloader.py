@@ -47,20 +47,33 @@ def my_collate(batch):
 def collate_normalize(batch):
     """collate lists of samples into batches, create [ batch_sz x agent_sz x seq_len x feature]"""
     """!!!UNFINISHED!!! DONT USE THIS FUNCTION!!!"""
+
+    def normalize(pv):
+        res = pv.copy()
+        # normalize p_in and scale v_in in each scene
+        for scene_i in range(len(pv)):
+            mean_p = numpy.mean(res[scene_i][:, :, 0], axis=0)
+            res[scene_i][:, :, 0] = pv[scene_i][:, :, 0] - mean_p
+            max_p = numpy.max(res[scene_i][:, :, 0])
+            min_p = numpy.min(res[scene_i][:, :, 0])
+            scale = max_p - min_p / 2
+            res[scene_i][:, :, 0] = (pv[scene_i][:, :, 0] - min_p) / scale - 1
+            res[scene_i][:, :, 1] = pv[scene_i][:, :, 1] / scale
+
     inp = [numpy.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
-    # normalize p_in in each scene
-    for i in range(len(inp)):
-        mean_p = numpy.mean(inp[i][:, :, 0], axis=0)
-        inp[i][:, :, 0] = inp[i][:, :, 0] - mean_p
     inp = numpy.array(inp)
+    normalize(inp)
     out = [numpy.dstack([scene["p_out"], scene["v_out"]]) for scene in batch]
     out = numpy.array(out)
+    normalize(out)
     inp = torch.LongTensor(inp)
     out = torch.LongTensor(out)
-    inp = inp / 300
+    return [inp, out]
 
 
-def loadData(path, city_index_path, batch_size=4, split=0.9, cutoff=None, normalize=False):
+def loadData(
+    path, city_index_path, batch_size=4, split=0.9, cutoff=None, normalize=False
+):
     # split train and valid data
     # load at most cutoff sample (only when get city data)
 
@@ -115,28 +128,28 @@ def loadData(path, city_index_path, batch_size=4, split=0.9, cutoff=None, normal
     MIA_train_loader = DataLoader(
         MIA_train_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         collate_fn=my_collate,
         num_workers=0,
     )
     PIT_train_loader = DataLoader(
         PIT_train_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         collate_fn=my_collate,
         num_workers=0,
     )
     MIA_valid_loader = DataLoader(
         MIA_valid_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         collate_fn=my_collate,
         num_workers=0,
     )
     PIT_valid_loader = DataLoader(
         PIT_valid_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         collate_fn=my_collate,
         num_workers=0,
     )
