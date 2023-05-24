@@ -10,9 +10,10 @@ from glob import glob
 class ADataset(Dataset):
     """Dataset class for Argoverse"""
 
-    def __init__(self, path_list, left, right, transform=None):
+    def __init__(self, path_data, path_list, left, right, transform=None):
         super(ADataset, self).__init__()
 
+        self.path_data = path_data
         self.pkl_list = path_list
         self.l = left
         self.r = right
@@ -23,7 +24,7 @@ class ADataset(Dataset):
 
     def __getitem__(self, idx):
         pkl_path = self.pkl_list[self.l + idx]
-        with open(pkl_path, "rb") as f:
+        with open(self.path_data + pkl_path, "rb") as f:
             data = pickle.load(f)
 
         if self.transform:
@@ -35,27 +36,50 @@ class ADataset(Dataset):
 def my_collate(batch):
     """collate lists of samples into batches, create [ batch_sz x agent_sz x seq_len x feature]"""
     inp = [numpy.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
+    inp = numpy.array(inp)
     out = [numpy.dstack([scene["p_out"], scene["v_out"]]) for scene in batch]
+    out = numpy.array(out)
     inp = torch.LongTensor(inp)
     out = torch.LongTensor(out)
     return [inp, out]
 
 
-def loadData(path, city_index_path, batch_size = 4, split=0.9, cutoff=None):
+def collate_normalize(batch):
+    """collate lists of samples into batches, create [ batch_sz x agent_sz x seq_len x feature]"""
+    """!!!UNFINISHED!!! DONT USE THIS FUNCTION!!!"""
+    inp = [numpy.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
+    # normalize p_in in each scene
+    for i in range(len(inp)):
+        mean_p = numpy.mean(inp[i][:, :, 0], axis=0)
+        inp[i][:, :, 0] = inp[i][:, :, 0] - mean_p
+    inp = numpy.array(inp)
+    out = [numpy.dstack([scene["p_out"], scene["v_out"]]) for scene in batch]
+    out = numpy.array(out)
+    inp = torch.LongTensor(inp)
+    out = torch.LongTensor(out)
+    inp = inp / 300
+
+
+def loadData(path, city_index_path, batch_size=4, split=0.9, cutoff=None, normalize=False):
     # split train and valid data
-    # load st most cutoff sample (only when get city data)
+    # load at most cutoff sample (only when get city data)
 
     if not os.path.exists(path):
         raise Exception("Wrong Path:" + path)
 
-    if os.path.exists(city_index_path + "MIA.pkl") and os.path.exists(
-        city_index_path + "PIT.pkl"
-    ):
-        print("Read City File")
-        with open(city_index_path + "MIA.pkl", "rb") as file:
-            MIA_list = pickle.load(file)[:int(cutoff/2)]
-        with open(city_index_path + "PIT.pkl", "rb") as file:
-            PIT_list = pickle.load(file)[:int(cutoff/2)]
+    mia_path = city_index_path + "MIA.pkl"
+    pit_path = city_index_path + "PIT.pkl"
+
+    if os.path.exists(mia_path) and os.path.exists(pit_path):
+        print("Reading city index file...")
+        with open(mia_path, "rb") as file:
+            MIA_list = pickle.load(file)
+            if cutoff is not None:
+                MIA_list = MIA_list[: int(cutoff)]
+        with open(pit_path, "rb") as file:
+            PIT_list = pickle.load(file)
+            if cutoff is not None:
+                PIT_list = PIT_list[: int(cutoff)]
     else:
         print("Get City File")
         pkl_list = glob(os.path.join(path, "*"))[:cutoff]
@@ -75,45 +99,43 @@ def loadData(path, city_index_path, batch_size = 4, split=0.9, cutoff=None):
         MIA_list.sort()
         PIT_list.sort()
 
-        with open(city_index_path + "MIA.pkl", "wb") as file:
+        with open(mia_path, "wb") as file:
             pickle.dump(MIA_list, file)
-        with open(city_index_path + "PIT.pkl", "wb") as file:
+        with open(mia_path, "wb") as file:
             pickle.dump(PIT_list, file)
 
     MIA_S = int(len(MIA_list) * split)
     PIT_S = int(len(PIT_list) * split)
 
-    MIA_train_dataset = ADataset(MIA_list, 0, MIA_S)
-    MIA_valid_dataset = ADataset(MIA_list, MIA_S, len(MIA_list))
-    PIT_train_dataset = ADataset(PIT_list, 0, PIT_S)
-    PIT_valid_dataset = ADataset(PIT_list, PIT_S, len(PIT_list))
-
-    batch_sz = batch_size
+    MIA_train_dataset = ADataset(path, MIA_list, 0, MIA_S)
+    MIA_valid_dataset = ADataset(path, MIA_list, MIA_S, len(MIA_list))
+    PIT_train_dataset = ADataset(path, PIT_list, 0, PIT_S)
+    PIT_valid_dataset = ADataset(path, PIT_list, PIT_S, len(PIT_list))
 
     MIA_train_loader = DataLoader(
         MIA_train_dataset,
-        batch_size=batch_sz,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=my_collate,
         num_workers=0,
     )
     PIT_train_loader = DataLoader(
         PIT_train_dataset,
-        batch_size=batch_sz,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=my_collate,
         num_workers=0,
     )
     MIA_valid_loader = DataLoader(
         MIA_valid_dataset,
-        batch_size=batch_sz,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=my_collate,
         num_workers=0,
     )
     PIT_valid_loader = DataLoader(
         PIT_valid_dataset,
-        batch_size=batch_sz,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=my_collate,
         num_workers=0,
@@ -129,6 +151,3 @@ def loadData(path, city_index_path, batch_size = 4, split=0.9, cutoff=None):
         MIA_valid_dataset,
         PIT_valid_dataset,
     )
-
-
-# MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = dataloader.loadData("C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\train\\train","C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\",split=0.9,cutoff=None)
