@@ -5,6 +5,7 @@ import os, os.path
 import numpy
 import pickle
 from glob import glob
+import matplotlib.pyplot as plt
 
 
 class ADataset(Dataset):
@@ -52,7 +53,7 @@ def collate_with_len(batch):
     inp = torch.LongTensor(inp)
     out = torch.LongTensor(out)
     mask = [scene["car_mask"] for scene in batch]
-    mask = torch.tensor(mask).squeeze()
+    mask = torch.tensor(mask).squeeze
     return [inp, out, mask]
 
 
@@ -152,3 +153,29 @@ def loadData(
         MIA_valid_dataset,
         PIT_valid_dataset,
     )
+
+
+def visualization(sample,pred_X,pred_Y,traj_idx = 0):
+
+    plt.figure(figsize=(16, 16))
+
+    p_in,p_out = sample['p_in'],sample['p_out']
+
+    px,py = p_in[traj_idx,:,0],p_in[traj_idx,:,1]
+    outx,outy = p_out[traj_idx,:,0],p_out[traj_idx,:,1]
+
+    for i in range(len(sample["lane"])):
+        x0,y0 = sample["lane"][i]
+        vx,vy = sample["lane_norm"][i]
+        
+        plt.plot([x0-vx/2,x0+vx/2],[y0-vy/2,y0+vy/2])
+
+    plt.scatter(px,py,label = "Input",s = 10)
+
+    plt.scatter(pred_X,pred_Y,label = "Predict",s = 10)
+
+    plt.scatter(outx,outy,label = "Groudtruth",s = 10)
+
+    plt.legend()
+
+    plt.show()

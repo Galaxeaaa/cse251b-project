@@ -1,4 +1,4 @@
-import dataloader
+import utils
 import torch
 import torch.nn as nn
 import random
@@ -6,6 +6,7 @@ import torch.optim as optim
 import tqdm
 import datetime
 import tqdm
+import matplotlib.pyplot as plt
 
 agent_id = 3
 
@@ -40,11 +41,11 @@ class LSTM(nn.Module):
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
 model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\"
-mode = "train"
+mode = "test"
 batch_size = 4
 cutoff = None
-collate_fn = dataloader.collate_with_len
-MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = dataloader.loadData(data_path,city_idx_path,batch_size,split=0.9,cutoff=cutoff,collate_fn=collate_fn)
+collate_fn = utils.collate_with_len
+MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = utils.loadData(data_path,city_idx_path,batch_size,split=0.9,cutoff=cutoff,collate_fn=collate_fn)
 
 input_size = 4
 hidden_size = 200
@@ -152,6 +153,8 @@ if mode == "train":
             torch.save(model.state_dict(), model_path+str(current_datetime)+'_model_'+str(epoch+1)+'.pth')
         # break
     # print(predict,out)
+    plt.plot(losses)
+    plt.show()
 
 if mode == "test":
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
