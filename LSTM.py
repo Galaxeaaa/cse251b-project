@@ -5,6 +5,7 @@ import random
 import torch.optim as optim
 import tqdm
 import datetime
+import tqdm
 
 agent_id = 3
 
@@ -42,7 +43,8 @@ model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\"
 mode = "train"
 batch_size = 4
 cutoff = None
-MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = dataloader.loadData(data_path,city_idx_path,batch_size,split=0.9,cutoff=cutoff)
+collate_fn = dataloader.collate_with_len
+MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = dataloader.loadData(data_path,city_idx_path,batch_size,split=0.9,cutoff=cutoff,collate_fn=collate_fn)
 
 input_size = 4
 hidden_size = 200
@@ -93,11 +95,11 @@ print('Using device:', device)
 '''an agent as a example'''
 
 if mode == "train":
-    learning_rate = 1E-4
+    learning_rate = 1E-3
     epochs = 50
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_12-01-40_model_50.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-24_14-44-02_model_5.pth'))
 
     optimizer = optim.Adam(model.parameters(),lr = learning_rate)
     criterion = nn.MSELoss()
@@ -106,12 +108,20 @@ if mode == "train":
     model.train()
     losses = []
 
-    for epoch in range(epochs):
+    progress_bar = tqdm.tqdm(range(epochs))
+
+    print("---start train---")
+
+    for epoch in progress_bar:
         eloss = []
         for i_batch, sample_batch in enumerate(MIA_train_loader):
-            inp, out = sample_batch # [batch_size, track_sum, seq_len, features]
+            inp, out,mask = sample_batch # [batch_size, track_sum, seq_len, features]
+            mask = mask.ravel()
+            indices = torch.nonzero(mask).squeeze()
             inp, out = inp.reshape(-1,inp.shape[2],inp.shape[3]).float(),out.reshape(-1,out.shape[2],out.shape[3]).float()
-            inp,out = inp.to(device),out.to(device)
+            inp, out = inp[indices],out[indices]
+            inp, out = inp.to(device),out.to(device)
+            # print(inp.shape,out.shape)
             predict_len = out.shape[1]
             first_col = inp[:, 0, :2].clone()
             broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
@@ -131,7 +141,8 @@ if mode == "train":
             #     print("Epoch: {} Batch: {} Loss {:.4f}".format(epoch,i_batch+1,loss))  
             # break
         avgloss = sum(eloss)/len(eloss)
-        print("Epoch:",epoch+1,"Loss:",loss)
+        progress_bar.set_description("Epoch {} Train loss: {:.4f}".format(epoch+1,avgloss))
+        # print("Epoch:",epoch+1,"Loss:",loss)
         losses.append(avgloss)
         
         current_datetime = datetime.datetime.now()
@@ -155,8 +166,12 @@ if mode == "test":
     tlosses = []
 
     for i_batch, sample_batch in enumerate(MIA_valid_loader):
-        inp, out = sample_batch # [batch_size, track_sum, seq_len, features]
+        inp, out,mask = sample_batch # [batch_size, track_sum, seq_len, features]
+        mask = mask.ravel()
+        indices = torch.nonzero(mask).squeeze()
         inp, out = inp.reshape(-1,inp.shape[2],inp.shape[3]).float(),out.reshape(-1,out.shape[2],out.shape[3]).float()
+        inp, out = inp[indices],out[indices]
+        # print(sum(mask),inp.shape[0])
         inp,out = inp.to(device),out.to(device)
         predict_len = out.shape[1]
 
@@ -174,6 +189,7 @@ if mode == "test":
         loss = criterion(out,predict)
         tlosses.append(loss.item())
 
+        # break
     # print(predict,out)
 
     print("Average MSE Loss: ",sum(tlosses)/len(tlosses))

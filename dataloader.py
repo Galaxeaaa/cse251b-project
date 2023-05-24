@@ -45,7 +45,15 @@ def default_collate(batch):
 
 
 def collate_with_len(batch):
-    return
+    inp = [numpy.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
+    inp = numpy.array(inp)
+    out = [numpy.dstack([scene["p_out"], scene["v_out"]]) for scene in batch]
+    out = numpy.array(out)
+    inp = torch.LongTensor(inp)
+    out = torch.LongTensor(out)
+    mask = [scene["car_mask"] for scene in batch]
+    mask = torch.tensor(mask).squeeze()
+    return [inp, out, mask]
 
 
 def loadData(
