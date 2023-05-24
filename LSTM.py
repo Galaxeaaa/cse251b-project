@@ -97,7 +97,7 @@ if mode == "train":
     epochs = 50
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-23_22-38-34_model_5.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-24_12-01-40_model_50.pth'))
 
     optimizer = optim.Adam(model.parameters(),lr = learning_rate)
     criterion = nn.MSELoss()
@@ -113,9 +113,15 @@ if mode == "train":
             inp, out = inp.reshape(-1,inp.shape[2],inp.shape[3]).float(),out.reshape(-1,out.shape[2],out.shape[3]).float()
             inp,out = inp.to(device),out.to(device)
             predict_len = out.shape[1]
+            first_col = inp[:, 0, :2].clone()
+            broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
+            inp[:, :, :2] -=  broadcasted_first_col
 
             optimizer.zero_grad()
+
             predict = model(inp,predict_len)
+            broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
+            predict[:, :, :2] += broadcasted_first_col
             # print(predict.shape,out.shape)
             loss = criterion(out,predict)
             loss.backward()
@@ -123,7 +129,7 @@ if mode == "train":
             eloss.append(loss.item())
             # if i_batch % 10 == 9:
             #     print("Epoch: {} Batch: {} Loss {:.4f}".format(epoch,i_batch+1,loss))  
-
+            # break
         avgloss = sum(eloss)/len(eloss)
         print("Epoch:",epoch+1,"Loss:",loss)
         losses.append(avgloss)
@@ -133,12 +139,12 @@ if mode == "train":
 
         if (epoch + 1) % 5 == 0:
             torch.save(model.state_dict(), model_path+str(current_datetime)+'_model_'+str(epoch+1)+'.pth')
-
-    print(predict,out)
+        # break
+    # print(predict,out)
 
 if mode == "test":
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-23_22-38-34_model_5.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-24_12-25-32_model_50.pth'))
 
     model = model.to(device)
 
@@ -154,7 +160,15 @@ if mode == "test":
         inp,out = inp.to(device),out.to(device)
         predict_len = out.shape[1]
 
+        first_col = inp[:, 0, :2].clone()
+        broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
+        inp[:, :, :2] -=  broadcasted_first_col
+
         predict = model(inp,predict_len)
+
+        broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
+        predict[:, :, :2] += broadcasted_first_col
+
         out = out[:,:,:2]
         predict = predict[:,:,:2]
         loss = criterion(out,predict)
