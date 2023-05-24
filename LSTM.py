@@ -157,9 +157,9 @@ if mode == "test":
         predict = model(inp,predict_len)
         out = out[:,:,:2]
         predict = predict[:,:,:2]
-        loss = torch.sqrt(criterion(out,predict))
+        loss = criterion(out,predict)
         tlosses.append(loss.item())
 
     # print(predict,out)
 
-    print("Average Loss: ",sum(tlosses)/len(tlosses))
+    print("Average MSE Loss: ",sum(tlosses)/len(tlosses))

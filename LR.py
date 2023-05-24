@@ -37,5 +37,5 @@ for i_batch, sample_batch in enumerate(MIA_valid_loader):
         tlosses.append(loss.item())
     # break
 
-print("Average Loss: ",sum(tlosses)/len(tlosses))
+print("Average MSE Loss: ",sum(tlosses)/len(tlosses))
     
