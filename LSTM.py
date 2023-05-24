@@ -160,4 +160,6 @@ if mode == "test":
         loss = torch.sqrt(criterion(out,predict))
         tlosses.append(loss.item())
 
+    # print(predict,out)
+
     print("Average Loss: ",sum(tlosses)/len(tlosses))
