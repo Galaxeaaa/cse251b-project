@@ -9,8 +9,6 @@ import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 
-agent_id = 3
-
 class LSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(LSTM, self).__init__()
@@ -97,7 +95,7 @@ print('Using device:', device)
 '''an agent as a example'''
 
 if mode == "train":
-    learning_rate = 1E-3
+    learning_rate = 1E-4
     epochs = 50
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
@@ -159,7 +157,7 @@ if mode == "train":
 
 if mode == "test":
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_16-31-47_model_10.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
 
     model = model.to(device)
 
@@ -201,11 +199,11 @@ if mode == "test":
 if mode == "visual":
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_16-31-47_model_10.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
     model = model.to("cpu")
 
     sample_idx = 99
-    traj_idx = 0
+    traj_idx = 3
 
     sample = MIA_valid_dataset[sample_idx]
 
