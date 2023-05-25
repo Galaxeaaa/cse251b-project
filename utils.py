@@ -59,6 +59,21 @@ def collate_with_len(batch):
     mask = torch.tensor(mask).squeeze()
     return [inp, out, mask]
 
+def collate_with_lane(batch):
+    inp = [numpy.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
+    inp = numpy.array(inp)
+    out = [numpy.dstack([scene["p_out"], scene["v_out"]]) for scene in batch]
+    out = numpy.array(out)
+    inp = torch.LongTensor(inp)
+    out = torch.LongTensor(out)
+    mask = [scene["car_mask"] for scene in batch]
+    mask = torch.tensor(mask).squeeze()
+    lane = [scene["lane"] for scene in batch]
+    # lane = torch.tensor(lane).squeeze()
+    lane_norm = [scene["lane_norm"] for scene in batch]
+    # lane_norm = torch.tensor(lane_norm).squeeze()
+    return [inp, out, mask,lane,lane_norm]
+
 
 def loadData(
     path, city_index_path, batch_size=4, split=0.9, cutoff=None, collate_fn=default_collate
@@ -211,3 +226,28 @@ def formOutput(path,data,scene_ids,name):
     df.columns = ["v"+str(i+1) for i in range(60)]
     df.insert(0, 'ID', scene_ids)
     df.to_csv(path+name, index=False)
+
+def get_nearest_lane(points,lane,lane_norm):
+    ''' a * [x,y] / b * [x1,y1,x2,y2] '''
+    x = points[:, 0].unsqueeze(1)
+    y = points[:, 1].unsqueeze(1)
+    x1 = (lane[:, 0] - lane_norm[:,0]/2).unsqueeze(0)
+    y1 = (lane[:, 1] - lane_norm[:,1]/2).unsqueeze(0)
+    x2 = (lane[:, 0] + lane_norm[:,0]/2).unsqueeze(0)
+    y2 = (lane[:, 1] + lane_norm[:,1]/2).unsqueeze(0)
+
+    m = (y2 - y1) / (x2 - x1)
+    c = y1 - m * x1
+
+    s_distances = torch.abs(m * x - y + c) / torch.sqrt(m**2 + 1)
+    l_distances = torch.sqrt((y-y1)**2+(x-x1)**2)
+    r_distances = torch.sqrt((y-y2)**2+(x-x2)**2)
+
+    distance = torch.cat([s_distances,l_distances,r_distances],dim=1)
+
+    indices = torch.argmin(distance,dim = 1) % 20
+
+    nearest_lane = lane[indices]
+    nearest_lane_norm = lane_norm[indices]
+
+    return nearest_lane,nearest_lane_norm
