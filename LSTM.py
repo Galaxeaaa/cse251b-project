@@ -7,6 +7,7 @@ import tqdm
 import datetime
 import tqdm
 import matplotlib.pyplot as plt
+import numpy as np
 
 agent_id = 3
 
@@ -41,7 +42,7 @@ class LSTM(nn.Module):
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
 model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\"
-mode = "test"
+mode = "visual"
 batch_size = 4
 cutoff = None
 collate_fn = utils.collate_with_len
@@ -158,7 +159,7 @@ if mode == "train":
 
 if mode == "test":
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_12-25-32_model_50.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-24_16-31-47_model_10.pth'))
 
     model = model.to(device)
 
@@ -196,5 +197,41 @@ if mode == "test":
     # print(predict,out)
 
     print("Average MSE Loss: ",sum(tlosses)/len(tlosses))
+
+if mode == "visual":
+
+    model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
+    model.load_state_dict(torch.load(model_path+'2023-05-24_16-31-47_model_10.pth'))
+    model = model.to("cpu")
+
+    sample_idx = 99
+    traj_idx = 0
+
+    sample = MIA_valid_dataset[sample_idx]
+
+    inp = np.dstack([sample["p_in"], sample["v_in"]])
+
+    # mask = torch.tensor(sample["car_mask"]).ravel()
+
+    # indices = torch.nonzero(mask).squeeze()
+
+    inp = torch.tensor(inp[traj_idx:traj_idx+1]).float()
+
+    predict_len = 30
+
+    first_col = inp[:, 0, :2].clone()
+    broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
+    inp[:, :, :2] -=  broadcasted_first_col
+
+    predict = model(inp,predict_len)
+
+    broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
+    predict[:, :, :2] += broadcasted_first_col
+
+    pred_X = predict[0,:,0]
+    pred_Y = predict[0,:,1]
+
+    utils.visualization(sample,pred_X.detach(),pred_Y.detach(),traj_idx)
+    
 
     

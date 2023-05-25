@@ -53,7 +53,7 @@ def collate_with_len(batch):
     inp = torch.LongTensor(inp)
     out = torch.LongTensor(out)
     mask = [scene["car_mask"] for scene in batch]
-    mask = torch.tensor(mask).squeeze
+    mask = torch.tensor(mask).squeeze()
     return [inp, out, mask]
 
 
@@ -155,7 +155,7 @@ def loadData(
     )
 
 
-def visualization(sample,pred_X,pred_Y,traj_idx = 0):
+def visualization(sample,pred_X,pred_Y,traj_idx):
 
     plt.figure(figsize=(16, 16))
 
