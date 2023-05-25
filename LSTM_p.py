@@ -40,7 +40,7 @@ class LSTM(nn.Module):
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
 model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\LSTM_P\\"
-mode = "test"
+mode = "train"
 batch_size = 4
 cutoff = None
 collate_fn = utils.collate_with_len
@@ -96,7 +96,7 @@ print('Using device:', device)
 
 if mode == "train":
     learning_rate = 1E-3
-    epochs = 10
+    epochs = 20
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
     # model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
