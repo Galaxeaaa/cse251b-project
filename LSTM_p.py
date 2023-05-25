@@ -39,16 +39,16 @@ class LSTM(nn.Module):
 
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
-model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\LSTM_PV\\"
+model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\LSTM_P\\"
 mode = "test"
 batch_size = 4
 cutoff = None
 collate_fn = utils.collate_with_len
 MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = utils.loadData(data_path,city_idx_path,batch_size,split=0.9,cutoff=cutoff,collate_fn=collate_fn)
 
-input_size = 4
+input_size = 2
 hidden_size = 200
-output_size = 4
+output_size = 2
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('Using device:', device)
@@ -95,11 +95,11 @@ print('Using device:', device)
 '''an agent as a example'''
 
 if mode == "train":
-    learning_rate = 1E-4
+    learning_rate = 1E-3
     epochs = 10
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
+    # model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
 
     optimizer = optim.Adam(model.parameters(),lr = learning_rate)
     criterion = nn.MSELoss()
@@ -127,11 +127,12 @@ if mode == "train":
             broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
             inp[:, :, :2] -=  broadcasted_first_col
 
+            inp, out = inp[:, :, :2], out[:, :, :2]
             optimizer.zero_grad()
 
             predict = model(inp,predict_len)
             broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
-            predict[:, :, :2] += broadcasted_first_col
+            predict += broadcasted_first_col
             # print(predict.shape,out.shape)
             loss = criterion(out,predict)
             loss.backward()
@@ -157,7 +158,7 @@ if mode == "train":
 
 if mode == "test":
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_21-33-18_model_10.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
 
     model = model.to(device)
 
