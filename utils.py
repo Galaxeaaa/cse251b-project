@@ -25,7 +25,9 @@ class ADataset(Dataset):
 
     def __getitem__(self, idx):
         pkl_path = self.pkl_list[self.l + idx]
-        with open(self.path_data + pkl_path, "rb") as f:
+        pkl_path = pkl_path.replace("./", "").replace("\\", "/")
+
+        with open(os.path.join(self.path_data, pkl_path), "rb") as f:
             data = pickle.load(f)
 
         if self.transform:
