@@ -6,7 +6,7 @@ import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 
-import dataloader
+import utils
 
 
 class EncoderDecoder(nn.Module):
@@ -300,8 +300,7 @@ city_index_path = "./"
     PIT_train_dataset,
     MIA_valid_dataset,
     PIT_valid_dataset,
-) = dataloader.loadData(data_path, city_index_path, batch_size=16, cutoff=None)
-print(len(MIA_train_loader))
+) = utils.loadData(data_path, city_index_path, batch_size=16, cutoff=200)
 
 # print(next(iter(MIA_valid_loader))[0].size())
 # print(MIA_valid_loader[0].keys())

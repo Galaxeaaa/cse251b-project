@@ -5,7 +5,9 @@ import os, os.path
 import numpy
 import pickle
 from glob import glob
-
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 class ADataset(Dataset):
     """Dataset class for Argoverse"""
@@ -24,7 +26,9 @@ class ADataset(Dataset):
 
     def __getitem__(self, idx):
         pkl_path = self.pkl_list[self.l + idx]
-        with open(self.path_data + pkl_path, "rb") as f:
+        pkl_path = pkl_path.replace("./", "").replace("\\", "/")
+
+        with open(os.path.join(self.path_data, pkl_path), "rb") as f:
             data = pickle.load(f)
 
         if self.transform:
@@ -45,7 +49,15 @@ def default_collate(batch):
 
 
 def collate_with_len(batch):
-    return
+    inp = [numpy.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
+    inp = numpy.array(inp)
+    out = [numpy.dstack([scene["p_out"], scene["v_out"]]) for scene in batch]
+    out = numpy.array(out)
+    inp = torch.LongTensor(inp)
+    out = torch.LongTensor(out)
+    mask = [scene["car_mask"] for scene in batch]
+    mask = torch.tensor(mask).squeeze()
+    return [inp, out, mask]
 
 
 def loadData(
@@ -144,3 +156,58 @@ def loadData(
         MIA_valid_dataset,
         PIT_valid_dataset,
     )
+
+
+def visualization(sample,pred_X,pred_Y,traj_idx):
+
+    plt.figure(figsize=(16, 16))
+
+    p_in,p_out = sample['p_in'],sample['p_out']
+
+    px,py = p_in[traj_idx,:,0],p_in[traj_idx,:,1]
+    outx,outy = p_out[traj_idx,:,0],p_out[traj_idx,:,1]
+
+    for i in range(len(sample["lane"])):
+        x0,y0 = sample["lane"][i]
+        vx,vy = sample["lane_norm"][i]
+        
+        plt.plot([x0-vx/2,x0+vx/2],[y0-vy/2,y0+vy/2])
+
+    plt.scatter(px,py,label = "Input",s = 10)
+
+    plt.scatter(pred_X,pred_Y,label = "Predict",s = 10)
+
+    plt.scatter(outx,outy,label = "Groudtruth",s = 10)
+
+    plt.legend()
+
+    plt.show()
+
+def loadValidData_by_traj(path):
+    print("Load valid data in traj level")
+    pkl_list = glob(os.path.join(path, "*"))
+    inps = []
+    scene_ids = []
+    # print(len(pkl_list))
+    for pkl_path in pkl_list:
+        with open(pkl_path, "rb") as f:
+            data = pickle.load(f)
+            agent_id = data["agent_id"]
+            track_id = data["track_id"]
+            # print(type(agent_id),type(track_id),agent_id,track_id)
+            indices = np.where(track_id == agent_id)[0]
+            # print(indices)
+            inp = numpy.dstack([data["p_in"], data["v_in"]])
+            inp = numpy.array(inp)[indices]
+            # print(inp.shape)
+            inps.append(inp)
+            scene_ids.append(data["scene_idx"])
+    inps = torch.tensor(inps).squeeze()
+    return scene_ids,inps
+
+def formOutput(path,data,scene_ids,name):
+    output = data.reshape(data.shape[0],-1).to("cpu")
+    df = pd.DataFrame(output.detach().numpy())
+    df.columns = ["v"+str(i+1) for i in range(60)]
+    df.insert(0, 'ID', scene_ids)
+    df.to_csv(path+name, index=False)
