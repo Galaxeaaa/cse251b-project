@@ -108,28 +108,28 @@ def loadData(
     MIA_train_loader = DataLoader(
         MIA_train_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         collate_fn=collate_fn,
         num_workers=0,
     )
     PIT_train_loader = DataLoader(
         PIT_train_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         collate_fn=collate_fn,
         num_workers=0,
     )
     MIA_valid_loader = DataLoader(
         MIA_valid_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         collate_fn=collate_fn,
         num_workers=0,
     )
     PIT_valid_loader = DataLoader(
         PIT_valid_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         collate_fn=collate_fn,
         num_workers=0,
     )
