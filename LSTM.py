@@ -40,7 +40,7 @@ class LSTM(nn.Module):
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
 model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\"
-mode = "visual"
+mode = "output"
 batch_size = 4
 cutoff = None
 collate_fn = utils.collate_with_len
@@ -231,5 +231,32 @@ if mode == "visual":
 
     utils.visualization(sample,pred_X.detach(),pred_Y.detach(),traj_idx)
     
+if mode == "output":
+
+    model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
+    model.load_state_dict(torch.load(model_path+'2023-05-24_14-44-02_model_5.pth'))
+
+    model = model.to(device)
+
+    path = 'C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\val_in\\val_in'
+
+    scence_ids,inp = utils.loadValidData_by_traj(path)
+    inp = inp.float().to(device)
+
+    predict_len = 30
+
+    first_col = inp[:, 0, :2].clone()
+    broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
+    inp[:, :, :2] -=  broadcasted_first_col
+
+    predict = model(inp,predict_len)
+
+    broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
+    predict[:, :, :2] += broadcasted_first_col
+
+    path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
+    name = "LSTM.csv"
+
+    utils.formOutput(path,predict[:,:,:2],scence_ids,name)
 
     

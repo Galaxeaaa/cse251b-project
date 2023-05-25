@@ -6,7 +6,8 @@ import numpy
 import pickle
 from glob import glob
 import matplotlib.pyplot as plt
-
+import numpy as np
+import pandas as pd
 
 class ADataset(Dataset):
     """Dataset class for Argoverse"""
@@ -181,3 +182,32 @@ def visualization(sample,pred_X,pred_Y,traj_idx):
     plt.legend()
 
     plt.show()
+
+def loadValidData_by_traj(path):
+    print("Load valid data in traj level")
+    pkl_list = glob(os.path.join(path, "*"))
+    inps = []
+    scene_ids = []
+    # print(len(pkl_list))
+    for pkl_path in pkl_list:
+        with open(pkl_path, "rb") as f:
+            data = pickle.load(f)
+            agent_id = data["agent_id"]
+            track_id = data["track_id"]
+            # print(type(agent_id),type(track_id),agent_id,track_id)
+            indices = np.where(track_id == agent_id)[0]
+            # print(indices)
+            inp = numpy.dstack([data["p_in"], data["v_in"]])
+            inp = numpy.array(inp)[indices]
+            # print(inp.shape)
+            inps.append(inp)
+            scene_ids.append(data["scene_idx"])
+    inps = torch.tensor(inps).squeeze()
+    return scene_ids,inps
+
+def formOutput(path,data,scene_ids,name):
+    output = data.reshape(data.shape[0],-1).to("cpu")
+    df = pd.DataFrame(output.detach().numpy())
+    df.columns = ["v"+str(i+1) for i in range(60)]
+    df.insert(0, 'ID', scene_ids)
+    df.to_csv(path+name, index=False)
