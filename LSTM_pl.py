@@ -38,7 +38,7 @@ class LSTM(nn.Module):
         for i in range(predict_len):
             output = self.linear(h)
             outputs.append(output)
-            
+
             nearest_lane,nearest_lane_norm = utils.get_nearest_lane(output,lanes[0],lane_norms[0])
             nearest_lane_norm = nearest_lane_norm/(torch.norm(nearest_lane_norm, dim=1).unsqueeze(1))
             output = torch.cat([output,nearest_lane_norm],dim=1)
@@ -62,7 +62,7 @@ def lane2p(lanes,lane_norms):
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
 model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\LSTM_PL\\"
-mode = "train"
+mode = "test"
 batch_size = 1 # dont change !!! lane over scene could be different
 cutoff = None
 collate_fn = utils.collate_with_lane
@@ -118,7 +118,7 @@ print('Using device:', device)
 
 if mode == "train":
     learning_rate = 1E-3
-    epochs = 20
+    epochs = 6
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
     # model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
@@ -165,7 +165,7 @@ if mode == "train":
             eloss.append(loss.item())
             # if i_batch % 10 == 9:
             #     print("Epoch: {} Batch: {} Loss {:.4f}".format(epoch,i_batch+1,loss))  
-            break
+            # break
         avgloss = sum(eloss)/len(eloss)
         progress_bar.set_description("Epoch {} Train loss: {:.4f}".format(epoch+1,avgloss))
         # print("Epoch:",epoch+1,"Loss:",loss)
@@ -174,16 +174,16 @@ if mode == "train":
         current_datetime = datetime.datetime.now()
         current_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
 
-        if (epoch + 1) % 5 == 0:
+        if (epoch + 1) % 2 == 0:
             torch.save(model.state_dict(), model_path+str(current_datetime)+'_model_'+str(epoch+1)+'.pth')
-        break
+        # break
     # print(predict,out)
     plt.plot(losses)
     plt.show()
 
 if mode == "test":
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-25_16-56-20_model_2.pth'))
 
     model = model.to(device)
 
@@ -194,20 +194,23 @@ if mode == "test":
     tlosses = []
 
     for i_batch, sample_batch in enumerate(MIA_valid_loader):
-        inp, out,mask = sample_batch # [batch_size, track_sum, seq_len, features]
+        inp, out,mask,lanes,lane_norms = sample_batch  # [batch_size, track_sum, seq_len, features]
         mask = mask.ravel()
         indices = torch.nonzero(mask).squeeze()
         inp, out = inp.reshape(-1,inp.shape[2],inp.shape[3]).float(),out.reshape(-1,out.shape[2],out.shape[3]).float()
         inp, out = inp[indices],out[indices]
+        lanes,lane_norms = torch.tensor(lanes).float().to(device),torch.tensor(lane_norms).float().to(device)
         # print(sum(mask),inp.shape[0])
         inp,out = inp.to(device),out.to(device)
+
         predict_len = out.shape[1]
 
         first_col = inp[:, 0, :2].clone()
         broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
         inp[:, :, :2] -=  broadcasted_first_col
+        inp, out = inp[:, :, :2], out[:, :, :2]
 
-        predict = model(inp,predict_len)
+        predict = model(inp,predict_len,lanes,lane_norms)
 
         broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
         predict[:, :, :2] += broadcasted_first_col
@@ -225,15 +228,21 @@ if mode == "test":
 if mode == "visual":
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-25_16-56-20_model_2.pth'))
     model = model.to("cpu")
 
-    sample_idx = 99
+    sample_idx = 299
     traj_idx = 3
 
     sample = MIA_valid_dataset[sample_idx]
 
     inp = np.dstack([sample["p_in"], sample["v_in"]])
+    
+    lanes = [sample["lane"]]
+
+    lane_norms = [sample["lane_norm"]]
+
+    lanes,lane_norms = torch.tensor(lanes).float(),torch.tensor(lane_norms).float()
 
     # mask = torch.tensor(sample["car_mask"]).ravel()
 
@@ -246,8 +255,9 @@ if mode == "visual":
     first_col = inp[:, 0, :2].clone()
     broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
     inp[:, :, :2] -=  broadcasted_first_col
+    inp = inp[:, :, :2]
 
-    predict = model(inp,predict_len)
+    predict = model(inp,predict_len,lanes,lane_norms)
 
     broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
     predict[:, :, :2] += broadcasted_first_col

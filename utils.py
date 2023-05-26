@@ -251,3 +251,28 @@ def get_nearest_lane(points,lane,lane_norm):
     nearest_lane_norm = lane_norm[indices]
 
     return nearest_lane,nearest_lane_norm
+
+def merge_output(datapath,outpath,MIAname,PITname,mergeName):
+    print("Load valid data in traj level")
+    MIA_df = pd.read_csv(outpath+MIAname)
+    PIT_df = pd.read_csv(outpath+PITname)
+    merge_df = pd.DataFrame(columns=MIA_df.columns)
+    pkl_list = glob(os.path.join(datapath, "*"))
+    idx = []
+    # print(len(pkl_list),len(merge_df))
+    for i,pkl_path in enumerate(pkl_list):
+        with open(pkl_path, "rb") as f:
+            data = pickle.load(f)
+            if data["city"] == "MIA":
+                row_to_add = MIA_df.iloc[[i]]
+            else:
+                row_to_add = PIT_df.iloc[[i]]
+            merge_df = pd.concat([merge_df, row_to_add], ignore_index=True)
+    merge_df.to_csv(outpath+mergeName, index=False)
+
+datapath = 'C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\val_in\\val_in'
+outpath = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
+MIAname = "LSTM3.csv"
+PITname = "LSTM2.csv"
+mergeName = "LTSM_M.csv"
+merge_output = merge_output(datapath,outpath,MIAname,PITname,mergeName)

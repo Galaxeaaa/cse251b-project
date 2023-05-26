@@ -41,7 +41,7 @@ data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-comp
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
 model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\LSTM_P\\"
 mode = "train"
-batch_size = 4
+batch_size = 16
 cutoff = None
 collate_fn = utils.collate_with_len
 MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = utils.loadData(data_path,city_idx_path,batch_size,split=0.9,cutoff=cutoff,collate_fn=collate_fn)
@@ -96,7 +96,7 @@ print('Using device:', device)
 
 if mode == "train":
     learning_rate = 1E-3
-    epochs = 20
+    epochs = 10
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
     # model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
@@ -114,7 +114,7 @@ if mode == "train":
 
     for epoch in progress_bar:
         eloss = []
-        for i_batch, sample_batch in enumerate(MIA_train_loader):
+        for i_batch, sample_batch in enumerate(PIT_train_loader):
             inp, out,mask = sample_batch # [batch_size, track_sum, seq_len, features]
             mask = mask.ravel()
             indices = torch.nonzero(mask).squeeze()
@@ -150,7 +150,7 @@ if mode == "train":
         current_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
 
         if (epoch + 1) % 5 == 0:
-            torch.save(model.state_dict(), model_path+str(current_datetime)+'_model_'+str(epoch+1)+'.pth')
+            torch.save(model.state_dict(), model_path+str(current_datetime)+'_model_p_'+str(epoch+1)+'.pth')
         # break
     # print(predict,out)
     plt.plot(losses)
@@ -181,6 +181,8 @@ if mode == "test":
         first_col = inp[:, 0, :2].clone()
         broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
         inp[:, :, :2] -=  broadcasted_first_col
+        
+        inp, out = inp[:, :, :2], out[:, :, :2]
 
         predict = model(inp,predict_len)
 
