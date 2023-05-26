@@ -56,6 +56,7 @@ def collate_with_len(batch):
     inp = torch.LongTensor(inp)
     out = torch.LongTensor(out)
     mask = [scene["car_mask"] for scene in batch]
+    mask = np.array(mask)
     mask = torch.tensor(mask).squeeze()
     return [inp, out, mask]
 

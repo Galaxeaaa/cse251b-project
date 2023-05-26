@@ -40,8 +40,11 @@ class LSTM(nn.Module):
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
 model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\LSTM_P\\"
+data_path = "./data/"
+city_idx_path = "./"
+model_path = "./model/LSTM_P/"
 mode = "train"
-batch_size = 4
+batch_size = 16
 cutoff = None
 collate_fn = utils.collate_with_len
 MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = utils.loadData(data_path,city_idx_path,batch_size,split=0.9,cutoff=cutoff,collate_fn=collate_fn)
@@ -95,11 +98,11 @@ print('Using device:', device)
 '''an agent as a example'''
 
 if mode == "train":
-    learning_rate = 1E-3
-    epochs = 20
+    learning_rate = 1E-4
+    epochs = 10
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    # model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
+    model.load_state_dict(torch.load(model_path + '2023-05-25_18-28-48_model_5.pth'))
 
     optimizer = optim.Adam(model.parameters(),lr = learning_rate)
     criterion = nn.MSELoss()
@@ -114,7 +117,7 @@ if mode == "train":
 
     for epoch in progress_bar:
         eloss = []
-        for i_batch, sample_batch in enumerate(MIA_train_loader):
+        for i_batch, sample_batch in enumerate(PIT_train_loader):
             inp, out,mask = sample_batch # [batch_size, track_sum, seq_len, features]
             mask = mask.ravel()
             indices = torch.nonzero(mask).squeeze()
@@ -158,7 +161,7 @@ if mode == "train":
 
 if mode == "test":
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-25_15-48-23_model_10.pth'))
 
     model = model.to(device)
 
@@ -182,6 +185,7 @@ if mode == "test":
         broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
         inp[:, :, :2] -=  broadcasted_first_col
 
+        inp, out = inp[:, :, :2], out[:, :, :2]
         predict = model(inp,predict_len)
 
         broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
@@ -235,11 +239,11 @@ if mode == "visual":
 if mode == "output":
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_14-44-02_model_5.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-25_15-48-23_model_10.pth'))
 
     model = model.to(device)
 
-    path = 'C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\val_in\\val_in'
+    path = './data/val_in/val_in'
 
     scence_ids,inp = utils.loadValidData_by_traj(path)
     inp = inp.float().to(device)
@@ -250,13 +254,14 @@ if mode == "output":
     broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
     inp[:, :, :2] -=  broadcasted_first_col
 
+    inp = inp[:, :, :2]
     predict = model(inp,predict_len)
 
     broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
     predict[:, :, :2] += broadcasted_first_col
 
-    path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
-    name = "LSTM.csv"
+    path = "./output/"
+    name = "LSTM_batch16.csv"
 
     utils.formOutput(path,predict[:,:,:2],scence_ids,name)
 

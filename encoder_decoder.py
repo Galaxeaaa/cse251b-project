@@ -5,6 +5,7 @@ import os, os.path
 import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
+import random
 
 import utils
 
@@ -62,12 +63,16 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.hidden_size = hidden_size
 
-        self.gru = nn.GRU(input_size, hidden_size)
+        self.lstm = nn.LSTM(input_size, hidden_size)
 
     def forward(self, input_seq):
-        hidden = torch.zeros(1, input_seq.size(1), self.hidden_size).to(device)
-        context_seq, hidden = self.gru(input_seq, hidden)
+        hidden = (
+            torch.zeros(1, input_seq.size(1), self.hidden_size).to(device),
+            torch.zeros(1, input_seq.size(1), self.hidden_size).to(device),
+        )
+        context_seq, hidden = self.lstm(input_seq, hidden)
         return context_seq, hidden
+
 
 class Attention(nn.Module):
     def __init__(self, hidden_size):
@@ -76,6 +81,8 @@ class Attention(nn.Module):
 
         self.attn = nn.Linear(hidden_size * 2, hidden_size)
         self.v = nn.Parameter(torch.rand(hidden_size))
+
+        self.initWeights()
 
     def forward(self, hidden_decoder, context_seq):
         hidden_decoder = hidden_decoder.repeat(
@@ -89,19 +96,25 @@ class Attention(nn.Module):
         context = torch.sum(context_seq * attention_weights, dim=0)
         return context, attention_weights
 
+    def initWeights(self):
+        self.attn.weight.data.normal_(0.0, 0.02)
+
 
 class Decoder(nn.Module):
     def __init__(self, hidden_size, output_size):
         super(Decoder, self).__init__()
         self.hidden_size = hidden_size
 
-        self.gru = nn.GRUCell(hidden_size, hidden_size)
+        self.lstm_cell = nn.LSTMCell(hidden_size, hidden_size)
         self.linear = nn.Linear(hidden_size, output_size)
 
-    def forward(self, context, hidden):
-        hidden = self.gru(context, hidden)
+    def forward(self, context, hidden, cell):
+        hidden, cell = self.lstm_cell(context, (hidden, cell))
         output = self.linear(hidden)
-        return output, hidden
+        return output, hidden, cell
+
+    def initWeights(self):
+        self.linear.weight.data.normal_(0.0, 0.02)
 
 
 class Seq2SeqAttention(nn.Module):
@@ -109,18 +122,29 @@ class Seq2SeqAttention(nn.Module):
         super(Seq2SeqAttention, self).__init__()
         self.encoder = Encoder(input_size, hidden_size)
         self.attention = Attention(hidden_size)
-        self.decoder = Decoder(hidden_size, output_size)
+        self.decoder = Decoder(hidden_size, hidden_size)
+        self.dropout = nn.Dropout(0.2)
+        self.relu = nn.ReLU()
+        self.linear = nn.Linear(hidden_size, output_size)
+
+        self.linear.weight.data.normal_(0.0, 0.02)
 
     def forward(self, input_seq, len_out=30):
         context_seq, hidden_encoder = self.encoder(input_seq)
-        hidden_decoder = hidden_encoder.squeeze(0)
+        context_seq = self.dropout(context_seq)
+        hidden_decoder = hidden_encoder[0][0]
+        cell_decoder = torch.zeros_like(hidden_decoder)
 
         # outputs = torch.zeros(output_seq_len, batch_size, output_size)
         outputs = []
 
         for t in range(len_out):
             context, _ = self.attention(hidden_decoder, context_seq)
-            output, hidden_decoder = self.decoder(context, hidden_decoder)
+            output, hidden_decoder, cell_decoder = self.decoder(
+                context, hidden_decoder, cell_decoder
+            )
+            output = self.relu(output)
+            output = self.linear(output)
             outputs.append(output)
 
         outputs = torch.stack(outputs, dim=0)
@@ -144,7 +168,7 @@ def normalize(pv, mean_p=None, min_p=None, max_p=None):
         max_p = torch.max(max_p, axis=2, keepdim=True)[0]
         min_p = torch.min(p, axis=1, keepdim=True)[0]
         min_p = torch.min(min_p, axis=2, keepdim=True)[0]
-    scale = max_p - min_p / 20
+    scale = (max_p - min_p) / 20
     pv_norm[..., :2] = (p - min_p) / scale - 10  # normalize p_in to [-1, 1]
     pv_norm[..., 2:] = v / scale  # scale v_in
     return pv_norm, mean_p, min_p, max_p
@@ -164,28 +188,39 @@ def train(
     print("Start Training")
     total_loss = 0
     i = 0
+    inp_vis, tar_vis = None, None
+    criterion = nn.MSELoss(reduction="none")
     for epoch in range(num_epochs):
         progress_bar = tqdm.tqdm(dataloader, ncols=100)
-        for inp, tar in progress_bar:
+        for inp, tar, masks in progress_bar:
+            if inp_vis is None:
+                inp_vis = inp[0:1]
+            if tar_vis is None:
+                tar_vis = tar[0:1]
             # Process input and target
-            inp, mean_inp, min_inp, max_inp = normalize(inp)
-            tar, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
-            inp = (
-                inp.permute(2, 0, 1, 3)
-                .reshape(inp.size(2), inp.size(0), -1)
+            inp_norm, mean_inp, min_inp, max_inp = normalize(inp)
+            tar_norm, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
+            inp_norm = (
+                inp_norm.permute(2, 0, 1, 3)
+                .reshape(inp_norm.size(2), inp_norm.size(0), -1)
                 .float()
                 .to(device)
             )  # [seq_len, batch_size, feature_size]
-            tar = (
-                tar.permute(2, 0, 1, 3)
-                .reshape(tar.size(2), tar.size(0), -1)
+            tar_norm = (
+                tar_norm.permute(2, 0, 1, 3)
+                .reshape(tar_norm.size(2), tar_norm.size(0), -1)
                 .float()
                 .to(device)
             )  # [seq_len, batch_size, feature_size]
 
             optimizer.zero_grad()
-            output = model(inp)
-            loss = criterion(output, tar)
+            output = model(inp_norm)
+            loss = criterion(output, tar_norm)
+            loss = loss.reshape(loss.size(0), loss.size(1), 60, 4).mean(dim=3)
+            masks = torch.tensor(masks).to(device)
+            masks = masks.permute(2, 0, 1).float()
+            loss = loss * masks
+            loss = torch.sum(loss)
             loss.backward()
             total_loss += loss.item()
             optimizer.step()
@@ -196,6 +231,8 @@ def train(
             i += 1
         all_losses.append(total_loss / len(dataloader))
         total_loss = 0
+        visualize(model, inp_vis, tar_vis)
+        model.train()
 
     return all_losses
 
@@ -226,66 +263,83 @@ def evaluate(model, dataloader, criterion):
     return current_loss / len(dataloader)
 
 
-def visualize(model, dataloader, n_plot):
+def visualize(model, inp, tar):
+    # inp, tar: [batch_size, agent_size, seq_len, feature_size]
     model.eval()
     with torch.no_grad():
-        dataloader_iter = iter(dataloader)
-        for i in range(n_plot):
-            inp, tar = next(dataloader_iter)
-            inp = inp[:1]
-            tar = tar[:1]
-            inp_norm, mean_inp, min_inp, max_inp = normalize(inp)
-            tar_norm, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
-            inp_norm = (
-                inp_norm.permute(2, 0, 1, 3)
-                .reshape(inp.size(2), inp.size(0), -1)
-                .float()
-                .to(device)
-            )
-            tar_norm = (
-                tar_norm.permute(2, 0, 1, 3)
-                .reshape(tar.size(2), tar.size(0), -1)
-                .float()
-                .to(device)
-            )
+        inp_norm, mean_inp, min_inp, max_inp = normalize(inp)
+        tar_norm, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
+        inp_norm = (
+            inp_norm.permute(
+                2, 0, 1, 3
+            )  # [seq_len, batch_size, agent_size, feature_size]
+            .reshape(
+                inp_norm.size(2), inp_norm.size(0), -1
+            )  # [seq_len, batch_size, agent_size*feature_size]
+            .float()
+            .to(device)
+        )
+        tar_norm = (
+            tar_norm.permute(
+                2, 0, 1, 3
+            )  # [seq_len, batch_size, agent_size, feature_size]
+            .reshape(
+                tar_norm.size(2), tar_norm.size(0), -1
+            )  # [seq_len, batch_size, agent_size*feature_size]
+            .float()
+            .to(device)
+        )
 
-            # out_norm = model(inp_norm)  # [seq_len, batch_size, feature_size]
-            # loss = criterion(out_norm, tar_norm)
-            # print(f"Loss of the {i+1}-th visualization: {loss.item():.4f}")
+        out_norm = model(inp_norm)  # [seq_len, batch_size, feature_size]
+        loss = criterion(out_norm, tar_norm)
 
-            # # Inverse normalize the output
-            # out = out_norm.cpu()
-            # out = out.reshape(out.size(0), out.size(1), 60, 4).permute(1, 2, 0, 3)
-            # scale = max_inp - min_inp / 2
-            # out[..., :2] = (out[..., :2] + 1) * scale + min_inp + mean_inp
-            # out[..., 2:] = out[..., 2:] * scale
+        # # Inverse normalize the output
+        # out = out_norm.cpu()
+        # out = out.reshape(out.size(0), out.size(1), 60, 4).permute(1, 2, 0, 3)
+        # scale = (max_inp - min_inp) / 20
+        # out[..., :2] = (out[..., :2] + 10) * scale + min_inp + mean_inp
+        # out[..., 2:] = out[..., 2:] * scale
 
-            # Plot the output
-            inp = inp.squeeze(0).numpy()  # [agent_size=60, seq_len=19, feature_size=4]
-            # out = out.squeeze(0).numpy()  # [agent_size=60, seq_len=30, feature_size=4]
-            tar = tar.squeeze(0).numpy()  # [agent_size=60, seq_len=30, feature_size=4]
-            plt.scatter(inp[0, :, 0], inp[0, :, 1], c="b")
-            # plt.scatter(out[0, :, 0], out[0, :, 1], c="g")
-            plt.scatter(tar[0, :, 0], tar[0, :, 1], c="r")
-            plt.show()
+        # # Plot the output
+        # inp = inp.squeeze(0).numpy()  # [agent_size=60, seq_len=19, feature_size=4]
+        # tar = tar.squeeze(0).numpy()  # [agent_size=60, seq_len=30, feature_size=4]
+        # out = out.squeeze(0).numpy()  # [agent_size=60, seq_len=30, feature_size=4]
+        # plt.scatter(inp[0, :, 0], inp[0, :, 1], c="b", s=2)
+        # plt.scatter(tar[0, :, 0], tar[0, :, 1], c="g", s=2)
+        # plt.scatter(out[0, :, 0], out[0, :, 1], c="r", s=2)
+        # plt.show()
 
-            # # Plot inp_norm and tar_norm in another figure
-            # inp_norm = inp_norm.cpu()
-            # tar_norm = tar_norm.cpu()
-            # out_norm = out_norm.cpu()
-            # inp_norm = inp_norm.reshape(
-            #     inp_norm.size(0), inp_norm.size(1), 60, 4
-            # ).squeeze(1)
-            # tar_norm = tar_norm.reshape(
-            #     tar_norm.size(0), tar_norm.size(1), 60, 4
-            # ).squeeze(1)
-            # out_norm = out_norm.reshape(
-            #     out_norm.size(0), out_norm.size(1), 60, 4
-            # ).squeeze(1)
-            # plt.scatter(inp_norm[:, 0, 0], inp_norm[:, 0, 1], c="b", alpha=0.5)
-            # plt.scatter(tar_norm[:, 0, 0], tar_norm[:, 0, 1], c="g", alpha=0.5)
-            # plt.scatter(out_norm[:, 0, 0], out_norm[:, 0, 1], c="r", alpha=0.5)
-            # plt.show()
+        # Plot inp_norm and tar_norm in another figure
+        inp_norm = inp_norm.cpu()
+        tar_norm = tar_norm.cpu()
+        out_norm = out_norm.cpu()
+        inp_norm = inp_norm.reshape(inp_norm.size(0), inp_norm.size(1), 60, 4).squeeze(
+            1
+        )
+        tar_norm = tar_norm.reshape(tar_norm.size(0), tar_norm.size(1), 60, 4).squeeze(
+            1
+        )
+        out_norm = out_norm.reshape(out_norm.size(0), out_norm.size(1), 60, 4).squeeze(
+            1
+        )
+        plt.scatter(inp_norm[:, 0, 0], inp_norm[:, 0, 1], c="b", s=2)
+        plt.scatter(tar_norm[:, 0, 0], tar_norm[:, 0, 1], c="g", s=2)
+        plt.scatter(out_norm[:, 0, 0], out_norm[:, 0, 1], c="r", s=2)
+        plt.show()
+
+        return loss
+
+
+def my_collate(batch):
+    """collate lists of samples into batches, create [ batch_sz x agent_sz x seq_len x feature]"""
+    inp = [np.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
+    inp = np.array(inp)
+    out = [np.dstack([scene["p_out"], scene["v_out"]]) for scene in batch]
+    out = np.array(out)
+    inp = torch.LongTensor(inp)
+    out = torch.LongTensor(out)
+    masks = [scene["car_mask"] for scene in batch]
+    return [inp, out, masks]
 
 
 data_path = "./data/"
@@ -300,7 +354,13 @@ city_index_path = "./"
     PIT_train_dataset,
     MIA_valid_dataset,
     PIT_valid_dataset,
-) = utils.loadData(data_path, city_index_path, batch_size=16, cutoff=200)
+) = utils.loadData(
+    data_path,
+    city_index_path,
+    batch_size=16,
+    collate_fn=my_collate,
+    cutoff=500,
+)
 
 # print(next(iter(MIA_valid_loader))[0].size())
 # print(MIA_valid_loader[0].keys())
@@ -315,16 +375,20 @@ model_file = "encoder_decoder_0.pt"
 model_path = ""
 if model_path and model_file and os.path.exists(model_path):
     print(f"Loading model from {model_path}...", end="")
-    model = Seq2SeqAttention(input_size=240, hidden_size=200, output_size=240).to(device)
+    model = Seq2SeqAttention(input_size=240, hidden_size=200, output_size=240).to(
+        device
+    )
     model.load_state_dict(torch.load(model_path + model_file))
     print("Done")
 else:
-    model = Seq2SeqAttention(input_size=240, hidden_size=200, output_size=240).to(device)
+    model = Seq2SeqAttention(input_size=240, hidden_size=200, output_size=240).to(
+        device
+    )
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 # Train model
-do_train = False
+do_train = True
 if do_train:
     MIA_train_losses = train(
         model, MIA_train_loader, criterion, optimizer, num_epochs=10
@@ -345,7 +409,7 @@ if do_save:
     torch.save(model.state_dict(), save_path + save_file)
     print("Done")
 
-do_evaluate = False
+do_evaluate = True
 if do_evaluate:
     # Evaluate model
     print("Evaluating...", end="")
@@ -353,9 +417,15 @@ if do_evaluate:
     print(f"MIA validation Loss: {MIA_valid_loss:.4f}")
     print("Done")
 
+n_vis = 1
 do_visualize = True
 if do_visualize:
     # Visualize model
     print("Visualizing...", end="")
-    visualize(model, MIA_train_loader, 3)
+    for i in range(n_vis):
+        inp, tar = next(iter(MIA_valid_loader))
+        u = random.randint(0, inp.size(0) - 1)
+        inp = inp[u : u + 1]
+        tar = tar[u : u + 1]
+        loss = visualize(model, inp, tar)
     print("Done")
