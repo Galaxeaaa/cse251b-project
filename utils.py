@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+
 class ADataset(Dataset):
     """Dataset class for Argoverse"""
 
@@ -60,6 +61,7 @@ def collate_with_len(batch):
     mask = torch.tensor(mask).squeeze()
     return [inp, out, mask]
 
+
 def collate_with_lane(batch):
     inp = [numpy.dstack([scene["p_in"], scene["v_in"]]) for scene in batch]
     inp = numpy.array(inp)
@@ -73,11 +75,16 @@ def collate_with_lane(batch):
     # lane = torch.tensor(lane).squeeze()
     lane_norm = [scene["lane_norm"] for scene in batch]
     # lane_norm = torch.tensor(lane_norm).squeeze()
-    return [inp, out, mask,lane,lane_norm]
+    return [inp, out, mask, lane, lane_norm]
 
 
 def loadData(
-    path, city_index_path, batch_size=4, split=0.9, cutoff=None, collate_fn=default_collate
+    path,
+    city_index_path,
+    batch_size=4,
+    split=0.9,
+    cutoff=None,
+    collate_fn=default_collate,
 ):
     # split train and valid data
     # load at most cutoff sample (only when get city data)
@@ -174,30 +181,30 @@ def loadData(
     )
 
 
-def visualization(sample,pred_X,pred_Y,traj_idx):
-
+def visualization(sample, pred_X, pred_Y, traj_idx):
     plt.figure(figsize=(16, 16))
 
-    p_in,p_out = sample['p_in'],sample['p_out']
+    p_in, p_out = sample["p_in"], sample["p_out"]
 
-    px,py = p_in[traj_idx,:,0],p_in[traj_idx,:,1]
-    outx,outy = p_out[traj_idx,:,0],p_out[traj_idx,:,1]
+    px, py = p_in[traj_idx, :, 0], p_in[traj_idx, :, 1]
+    outx, outy = p_out[traj_idx, :, 0], p_out[traj_idx, :, 1]
 
     for i in range(len(sample["lane"])):
-        x0,y0 = sample["lane"][i]
-        vx,vy = sample["lane_norm"][i]
-        
-        plt.plot([x0-vx/2,x0+vx/2],[y0-vy/2,y0+vy/2])
+        x0, y0 = sample["lane"][i]
+        vx, vy = sample["lane_norm"][i]
 
-    plt.scatter(px,py,label = "Input",s = 10)
+        plt.plot([x0 - vx / 2, x0 + vx / 2], [y0 - vy / 2, y0 + vy / 2])
 
-    plt.scatter(pred_X,pred_Y,label = "Predict",s = 10)
+    plt.scatter(px, py, label="Input", s=10)
 
-    plt.scatter(outx,outy,label = "Groudtruth",s = 10)
+    plt.scatter(pred_X, pred_Y, label="Predict", s=10)
+
+    plt.scatter(outx, outy, label="Groudtruth", s=10)
 
     plt.legend()
 
     plt.show()
+
 
 def loadValidData_by_traj(path):
     print("Load valid data in traj level")
@@ -219,49 +226,52 @@ def loadValidData_by_traj(path):
             inps.append(inp)
             scene_ids.append(data["scene_idx"])
     inps = torch.tensor(inps).squeeze()
-    return scene_ids,inps
+    return scene_ids, inps
 
-def formOutput(path,data,scene_ids,name):
-    output = data.reshape(data.shape[0],-1).to("cpu")
+
+def formOutput(path, data, scene_ids, name):
+    output = data.reshape(data.shape[0], -1).to("cpu")
     df = pd.DataFrame(output.detach().numpy())
-    df.columns = ["v"+str(i+1) for i in range(60)]
-    df.insert(0, 'ID', scene_ids)
-    df.to_csv(path+name, index=False)
+    df.columns = ["v" + str(i + 1) for i in range(60)]
+    df.insert(0, "ID", scene_ids)
+    df.to_csv(path + name, index=False)
 
-def get_nearest_lane(points,lane,lane_norm):
-    ''' a * [x,y] / b * [x1,y1,x2,y2] '''
+
+def get_nearest_lane(points, lane, lane_norm):
+    """a * [x,y] / b * [x1,y1,x2,y2]"""
     x = points[:, 0].unsqueeze(1)
     y = points[:, 1].unsqueeze(1)
-    x1 = (lane[:, 0] - lane_norm[:,0]/2).unsqueeze(0)
-    y1 = (lane[:, 1] - lane_norm[:,1]/2).unsqueeze(0)
-    x2 = (lane[:, 0] + lane_norm[:,0]/2).unsqueeze(0)
-    y2 = (lane[:, 1] + lane_norm[:,1]/2).unsqueeze(0)
+    x1 = (lane[:, 0] - lane_norm[:, 0] / 2).unsqueeze(0)
+    y1 = (lane[:, 1] - lane_norm[:, 1] / 2).unsqueeze(0)
+    x2 = (lane[:, 0] + lane_norm[:, 0] / 2).unsqueeze(0)
+    y2 = (lane[:, 1] + lane_norm[:, 1] / 2).unsqueeze(0)
 
     m = (y2 - y1) / (x2 - x1)
     c = y1 - m * x1
 
     s_distances = torch.abs(m * x - y + c) / torch.sqrt(m**2 + 1)
-    l_distances = torch.sqrt((y-y1)**2+(x-x1)**2)
-    r_distances = torch.sqrt((y-y2)**2+(x-x2)**2)
+    l_distances = torch.sqrt((y - y1) ** 2 + (x - x1) ** 2)
+    r_distances = torch.sqrt((y - y2) ** 2 + (x - x2) ** 2)
 
-    distance = torch.cat([s_distances,l_distances,r_distances],dim=1)
+    distance = torch.cat([s_distances, l_distances, r_distances], dim=1)
 
-    indices = torch.argmin(distance,dim = 1) % 20
+    indices = torch.argmin(distance, dim=1) % 20
 
     nearest_lane = lane[indices]
     nearest_lane_norm = lane_norm[indices]
 
-    return nearest_lane,nearest_lane_norm
+    return nearest_lane, nearest_lane_norm
 
-def merge_output(datapath,outpath,MIAname,PITname,mergeName):
+
+def merge_output(datapath, outpath, MIAname, PITname, mergeName):
     print("Load valid data in traj level")
-    MIA_df = pd.read_csv(outpath+MIAname)
-    PIT_df = pd.read_csv(outpath+PITname)
+    MIA_df = pd.read_csv(outpath + MIAname)
+    PIT_df = pd.read_csv(outpath + PITname)
     merge_df = pd.DataFrame(columns=MIA_df.columns)
     pkl_list = glob(os.path.join(datapath, "*"))
     idx = []
     # print(len(pkl_list),len(merge_df))
-    for i,pkl_path in enumerate(pkl_list):
+    for i, pkl_path in enumerate(pkl_list):
         with open(pkl_path, "rb") as f:
             data = pickle.load(f)
             if data["city"] == "MIA":
@@ -269,11 +279,15 @@ def merge_output(datapath,outpath,MIAname,PITname,mergeName):
             else:
                 row_to_add = PIT_df.iloc[[i]]
             merge_df = pd.concat([merge_df, row_to_add], ignore_index=True)
-    merge_df.to_csv(outpath+mergeName, index=False)
+    merge_df.to_csv(outpath + mergeName, index=False)
 
-datapath = 'C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\val_in\\val_in'
-outpath = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
-MIAname = "LSTM3.csv"
-PITname = "LSTM2.csv"
-mergeName = "LTSM_M.csv"
-merge_output = merge_output(datapath,outpath,MIAname,PITname,mergeName)
+
+if __name__ == "__main__":
+    datapath = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\val_in\\val_in"
+    outpath = (
+        "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
+    )
+    MIAname = "LSTM3.csv"
+    PITname = "LSTM2.csv"
+    mergeName = "LTSM_M.csv"
+    merge_output = merge_output(datapath, outpath, MIAname, PITname, mergeName)

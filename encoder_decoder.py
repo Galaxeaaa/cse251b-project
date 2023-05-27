@@ -14,164 +14,71 @@ class EncoderDecoder(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(EncoderDecoder, self).__init__()
         self.hidden_size = hidden_size
-
         self.encoder = nn.LSTMCell(input_size, hidden_size)
-        # self.attention = nn.MultiheadAttention(hidden_size, 1)
-        self.decoder = nn.LSTMCell(hidden_size, hidden_size)
-        self.relu = nn.ReLU()
+        self.decoder = nn.LSTMCell(output_size, hidden_size)
         self.linear = nn.Linear(hidden_size, output_size)
 
-        self.initWeights()
-
-    def forward(self, inp):
-        batch_size = inp.size(1)
-        hidden_encoder = self.initHidden(batch_size).to(device)
-        cell_encoder = self.initCell(batch_size).to(device)
-        hidden_decoder = self.initHidden(batch_size).to(device)
-        cell_decoder = self.initCell(batch_size).to(device)
-
-        for i in range(19):
-            hidden_encoder, cell_encoder = self.encoder(
-                inp[i], (hidden_encoder, cell_encoder)
-            )
-
-        hidden_decoder = hidden_encoder
-        output = [hidden_decoder]
-        for i in range(29):
-            hidden_decoder, cell_decoder = self.decoder(
-                hidden_decoder, (hidden_decoder, cell_decoder)
-            )
-            output.append(hidden_decoder)
-
-        output = torch.stack(output, dim=0)
-        output = self.relu(output)
-        output = self.linear(output)
-        return output
-
-    def initWeights(self):
-        self.linear.weight.data.normal_(0.0, 0.02)
-
-    def initHidden(self, batch_size):
-        return torch.zeros(batch_size, self.hidden_size)
-
-    def initCell(self, batch_size):
-        return torch.zeros(batch_size, self.hidden_size)
-
-
-class Encoder(nn.Module):
-    def __init__(self, input_size, hidden_size):
-        super(Encoder, self).__init__()
-        self.hidden_size = hidden_size
-
-        self.lstm = nn.LSTM(input_size, hidden_size)
-
-    def forward(self, input_seq):
-        hidden = (
-            torch.zeros(1, input_seq.size(1), self.hidden_size).to(device),
-            torch.zeros(1, input_seq.size(1), self.hidden_size).to(device),
+    def forward(self, input_seq, predict_len=30):
+        device = input_seq.device
+        (seq_len, batch_size, fea_len) = input_seq.shape
+        h, c = torch.zeros(batch_size, self.hidden_size, device=device), torch.zeros(
+            batch_size, self.hidden_size, device=device
         )
-        context_seq, hidden = self.lstm(input_seq, hidden)
-        return context_seq, hidden
-
-
-class Attention(nn.Module):
-    def __init__(self, hidden_size):
-        super(Attention, self).__init__()
-        self.hidden_size = hidden_size
-
-        self.attn = nn.Linear(hidden_size * 2, hidden_size)
-        self.v = nn.Parameter(torch.rand(hidden_size))
-
-        self.initWeights()
-
-    def forward(self, hidden_decoder, context_seq):
-        hidden_decoder = hidden_decoder.repeat(
-            context_seq.size(0), 1, 1
-        )  # [seq_len, batch_size, hidden_size]
-
-        energy = torch.tanh(self.attn(torch.cat((hidden_decoder, context_seq), dim=2)))
-        attention_scores = torch.matmul(energy, self.v)
-        attention_weights = torch.softmax(attention_scores, dim=0)
-        attention_weights = attention_weights.unsqueeze(2)
-        context = torch.sum(context_seq * attention_weights, dim=0)
-        return context, attention_weights
-
-    def initWeights(self):
-        self.attn.weight.data.normal_(0.0, 0.02)
-
-
-class Decoder(nn.Module):
-    def __init__(self, hidden_size, output_size):
-        super(Decoder, self).__init__()
-        self.hidden_size = hidden_size
-
-        self.lstm_cell = nn.LSTMCell(hidden_size, hidden_size)
-        self.linear = nn.Linear(hidden_size, output_size)
-
-    def forward(self, context, hidden, cell):
-        hidden, cell = self.lstm_cell(context, (hidden, cell))
-        output = self.linear(hidden)
-        return output, hidden, cell
-
-    def initWeights(self):
-        self.linear.weight.data.normal_(0.0, 0.02)
-
-
-class Seq2SeqAttention(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
-        super(Seq2SeqAttention, self).__init__()
-        self.encoder = Encoder(input_size, hidden_size)
-        self.attention = Attention(hidden_size)
-        self.decoder = Decoder(hidden_size, hidden_size)
-        self.dropout = nn.Dropout(0.2)
-        self.relu = nn.ReLU()
-        self.linear = nn.Linear(hidden_size, output_size)
-
-        self.linear.weight.data.normal_(0.0, 0.02)
-
-    def forward(self, input_seq, len_out=30):
-        context_seq, hidden_encoder = self.encoder(input_seq)
-        context_seq = self.dropout(context_seq)
-        hidden_decoder = hidden_encoder[0][0]
-        cell_decoder = torch.zeros_like(hidden_decoder)
-
-        # outputs = torch.zeros(output_seq_len, batch_size, output_size)
         outputs = []
 
-        for t in range(len_out):
-            context, _ = self.attention(hidden_decoder, context_seq)
-            output, hidden_decoder, cell_decoder = self.decoder(
-                context, hidden_decoder, cell_decoder
-            )
-            output = self.relu(output)
-            output = self.linear(output)
+        for i in range(seq_len):
+            h, c = self.encoder(input_seq[i], (h, c))
+
+        # for i in range(predict_len):
+        #     output = self.linear(h)
+        #     outputs.append(output)
+        #     h, c = self.encoder(output, (h, c))
+
+        for i in range(predict_len):
+            output = self.linear(h)
             outputs.append(output)
+            h, c = self.decoder(output, (h, c))
 
         outputs = torch.stack(outputs, dim=0)
+        # outputs = outputs.permute(1, 0, 2)
 
         return outputs
 
 
-def normalize(pv, mean_p=None, min_p=None, max_p=None):
-    pv_norm = pv.clone()  # [batch_size, agent_size, seq_len, feature_size]
-    pv_norm = pv_norm.type(torch.float32)
-    # Normalize p_in and scale v_in in each scene
-    p = pv_norm[..., :2]
-    v = pv_norm[..., 2:]
+def toModelFormat(tensor, masks):
+    # Remove agents that are not in the scene
+    valid_indices = torch.nonzero(masks.ravel()).squeeze()
+    # Reshape input and target to [batch_size, seq_len, feature_size], the original batch_size and agent_size are combined
+    tensor = tensor.reshape(-1, tensor.size(2), tensor.size(3))[valid_indices]
+    tensor = tensor.permute(1, 0, 2)  # [seq_len, batch_size, feature_size]
+    tensor = tensor.float()
+    tensor = tensor[..., :2]
+
+    return tensor
+
+
+def normalize(data_fr_loader, mean_p=None, min_p=None, max_p=None):
+    norm = data_fr_loader.clone().float()  # [batch_size, agent_size, seq_len, feature_size]
+    # p = norm[..., :2]
+    # v = norm[..., 2:]
     if mean_p is None:
-        mean_p = torch.mean(p, axis=1, keepdim=True)
-        mean_p = torch.mean(mean_p, axis=2, keepdim=True)
-        # mean_p = p[:, :, 0, :].unsqueeze(2)
-    pv_norm[..., :2] = p - mean_p
-    if min_p is None or max_p is None:
-        max_p = torch.max(p, axis=1, keepdim=True)[0]
-        max_p = torch.max(max_p, axis=2, keepdim=True)[0]
-        min_p = torch.min(p, axis=1, keepdim=True)[0]
-        min_p = torch.min(min_p, axis=2, keepdim=True)[0]
-    scale = (max_p - min_p) / 20
-    pv_norm[..., :2] = (p - min_p) / scale - 10  # normalize p_in to [-1, 1]
-    pv_norm[..., 2:] = v / scale  # scale v_in
-    return pv_norm, mean_p, min_p, max_p
+        # mean_p = torch.mean(p, axis=0)
+        # mean_p = torch.mean(mean_p, axis=0)
+        mean_p = norm[..., 0, :2].unsqueeze(2).clone()
+    norm[..., :2] = norm[..., :2] - mean_p
+    # if min_p is None or max_p is None:
+    #     max_p = torch.max(p, axis=0)[0]
+    #     max_p = torch.max(max_p, axis=0)[0]
+    #     min_p = torch.min(p, axis=0)[0]
+    #     min_p = torch.min(min_p, axis=0)[0]
+    # scale = (max_p - min_p) / 20
+    # pv_norm[..., :2] = (p - min_p) / scale - 10  # normalize p_in to [-1, 1]
+    # pv_norm[..., 2:] = v / scale  # scale v_in
+    return norm, mean_p, min_p, max_p
+
+
+def denormalize(norm, mean_p, min_p, max_p):
+    return norm + mean_p
 
 
 def train(
@@ -180,8 +87,8 @@ def train(
     criterion,
     optimizer,
     num_epochs=10,
+    vis_every=10,
     print_every=10,
-    plot_every=1,
 ):
     model.train()
     all_losses = []
@@ -189,38 +96,26 @@ def train(
     total_loss = 0
     i = 0
     inp_vis, tar_vis = None, None
-    criterion = nn.MSELoss(reduction="none")
     for epoch in range(num_epochs):
         progress_bar = tqdm.tqdm(dataloader, ncols=100)
         for inp, tar, masks in progress_bar:
-            if inp_vis is None:
-                inp_vis = inp[0:1]
-            if tar_vis is None:
-                tar_vis = tar[0:1]
-            # Process input and target
+            if vis_every:
+                if inp_vis is None:
+                    inp_vis = inp
+                if tar_vis is None:
+                    tar_vis = tar
+
             inp_norm, mean_inp, min_inp, max_inp = normalize(inp)
-            tar_norm, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
-            inp_norm = (
-                inp_norm.permute(2, 0, 1, 3)
-                .reshape(inp_norm.size(2), inp_norm.size(0), -1)
-                .float()
-                .to(device)
-            )  # [seq_len, batch_size, feature_size]
-            tar_norm = (
-                tar_norm.permute(2, 0, 1, 3)
-                .reshape(tar_norm.size(2), tar_norm.size(0), -1)
-                .float()
-                .to(device)
-            )  # [seq_len, batch_size, feature_size]
+            # tar_norm, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
+            inp_norm = toModelFormat(inp_norm, masks)
+            # tar_norm = toModelFormat(tar_norm, masks)
+            mean_inp = toModelFormat(mean_inp, masks)
 
             optimizer.zero_grad()
-            output = model(inp_norm)
-            loss = criterion(output, tar_norm)
-            loss = loss.reshape(loss.size(0), loss.size(1), 60, 4).mean(dim=3)
-            masks = torch.tensor(masks).to(device)
-            masks = masks.permute(2, 0, 1).float()
-            loss = loss * masks
-            loss = torch.sum(loss)
+            out_norm = model(inp_norm.to(device))
+            out = denormalize(out_norm, mean_inp.to(device), min_inp, max_inp)
+            tar = toModelFormat(tar, masks)
+            loss = criterion(out.to(device), tar.to(device))
             loss.backward()
             total_loss += loss.item()
             optimizer.step()
@@ -231,7 +126,8 @@ def train(
             i += 1
         all_losses.append(total_loss / len(dataloader))
         total_loss = 0
-        visualize(model, inp_vis, tar_vis)
+        if vis_every and (epoch + 1) % vis_every == 0:
+            visualize(model, inp_vis, tar_vis, masks)
         model.train()
 
     return all_losses
@@ -241,57 +137,37 @@ def evaluate(model, dataloader, criterion):
     model.eval()
     current_loss = 0
     with torch.no_grad():
-        for i, (inp, tar) in enumerate(dataloader):
-            inp, mean_inp, min_inp, max_inp = normalize(inp)
-            tar, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
-            inp = (
-                inp.permute(2, 0, 1, 3)
-                .reshape(inp.size(2), inp.size(0), -1)
-                .float()
-                .to(device)
-            )
-            tar = (
-                tar.permute(2, 0, 1, 3)
-                .reshape(tar.size(2), tar.size(0), -1)
-                .float()
-                .to(device)
-            )
+        for i, (inp, tar, masks) in enumerate(dataloader):
+            inp_norm, mean_inp, min_inp, max_inp = normalize(inp)
+            # tar_norm, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
+            inp_norm = toModelFormat(inp_norm, masks)
+            # tar_norm = toModelFormat(tar_norm, masks)
+            mean_inp = toModelFormat(mean_inp, masks)
 
-            out = model(inp)
-            loss = criterion(out, tar)
+            out_norm = model(inp_norm.to(device))
+            out = denormalize(out_norm, mean_inp.to(device), min_inp, max_inp)
+            tar = toModelFormat(tar, masks)
+            loss = criterion(out.to(device), tar.to(device))
             current_loss += loss.item()
+
     return current_loss / len(dataloader)
 
 
-def visualize(model, inp, tar):
-    # inp, tar: [batch_size, agent_size, seq_len, feature_size]
+def visualize(model, inp, tar, masks):
+    # inp, tar: [batch_size, seq_len, feature_size]
     model.eval()
     with torch.no_grad():
         inp_norm, mean_inp, min_inp, max_inp = normalize(inp)
-        tar_norm, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
-        inp_norm = (
-            inp_norm.permute(
-                2, 0, 1, 3
-            )  # [seq_len, batch_size, agent_size, feature_size]
-            .reshape(
-                inp_norm.size(2), inp_norm.size(0), -1
-            )  # [seq_len, batch_size, agent_size*feature_size]
-            .float()
-            .to(device)
-        )
-        tar_norm = (
-            tar_norm.permute(
-                2, 0, 1, 3
-            )  # [seq_len, batch_size, agent_size, feature_size]
-            .reshape(
-                tar_norm.size(2), tar_norm.size(0), -1
-            )  # [seq_len, batch_size, agent_size*feature_size]
-            .float()
-            .to(device)
-        )
+        # tar_norm, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
+        inp_norm = toModelFormat(inp_norm, masks)
+        # tar_norm = toModelFormat(tar_norm, masks)
+        mean_inp = toModelFormat(mean_inp, masks)
 
-        out_norm = model(inp_norm)  # [seq_len, batch_size, feature_size]
-        loss = criterion(out_norm, tar_norm)
+        out_norm = model(inp_norm.to(device))
+        out = denormalize(out_norm, mean_inp.to(device), min_inp, max_inp)
+        inp = toModelFormat(inp, masks)
+        tar = toModelFormat(tar, masks)
+        loss = criterion(out.to(device), tar.to(device))
 
         # # Inverse normalize the output
         # out = out_norm.cpu()
@@ -310,21 +186,12 @@ def visualize(model, inp, tar):
         # plt.show()
 
         # Plot inp_norm and tar_norm in another figure
-        inp_norm = inp_norm.cpu()
-        tar_norm = tar_norm.cpu()
-        out_norm = out_norm.cpu()
-        inp_norm = inp_norm.reshape(inp_norm.size(0), inp_norm.size(1), 60, 4).squeeze(
-            1
-        )
-        tar_norm = tar_norm.reshape(tar_norm.size(0), tar_norm.size(1), 60, 4).squeeze(
-            1
-        )
-        out_norm = out_norm.reshape(out_norm.size(0), out_norm.size(1), 60, 4).squeeze(
-            1
-        )
-        plt.scatter(inp_norm[:, 0, 0], inp_norm[:, 0, 1], c="b", s=2)
-        plt.scatter(tar_norm[:, 0, 0], tar_norm[:, 0, 1], c="g", s=2)
-        plt.scatter(out_norm[:, 0, 0], out_norm[:, 0, 1], c="r", s=2)
+        inp = inp.cpu()
+        tar = tar.cpu()
+        out = out.cpu()
+        plt.scatter(inp[:, 0, 0], inp[:, 0, 1], c="b", s=2)
+        plt.scatter(tar[:, 0, 0], tar[:, 0, 1], c="g", s=2)
+        plt.scatter(out[:, 0, 0], out[:, 0, 1], c="r", s=2)
         plt.show()
 
         return loss
@@ -339,93 +206,133 @@ def my_collate(batch):
     inp = torch.LongTensor(inp)
     out = torch.LongTensor(out)
     masks = [scene["car_mask"] for scene in batch]
+    masks = np.array(masks)
+    masks = torch.tensor(masks).squeeze()
     return [inp, out, masks]
 
 
-data_path = "./data/"
-city_index_path = "./"
+def transform_batch(batch):
+    # Remove agents that are not in the scene
+    valid_indices = torch.nonzero(masks.ravel()).squeeze()
+    inp = inp.reshape(-1, inp.size(2), inp.size(3))[valid_indices]
+    tar = tar.reshape(-1, tar.size(2), tar.size(3))[valid_indices]
+    if vis_every:
+        if inp_vis is None:
+            inp_vis = inp[0:1]
+        if tar_vis is None:
+            tar_vis = tar[0:1]
+    # Process input and target
+    inp_norm, mean_inp, min_inp, max_inp = normalize(inp)
+    # tar_norm, _, _, _ = normalize(tar, mean_inp, min_inp, max_inp)
+    inp_norm = (
+        inp_norm.permute(1, 0, 2).float().to(device)
+    )  # [seq_len, batch_size, feature_size]
+    tar = tar.permute(1, 0, 2).float().to(device)  # [seq_len, batch_size, feature_size]
 
-(
-    MIA_train_loader,
-    PIT_train_loader,
-    MIA_valid_loader,
-    PIT_valid_loader,
-    MIA_train_dataset,
-    PIT_train_dataset,
-    MIA_valid_dataset,
-    PIT_valid_dataset,
-) = utils.loadData(
-    data_path,
-    city_index_path,
-    batch_size=16,
-    collate_fn=my_collate,
-    cutoff=500,
-)
 
-# print(next(iter(MIA_valid_loader))[0].size())
-# print(MIA_valid_loader[0].keys())
+if __name__ == "__main__":
+    # Configure
+    data_path = "./data/"
+    city_index_path = "./"
+    model_path = "./model/"
+    model_file = "encoder_decoder_0.pt"
+    model_path = ""
+    batch_size = 16
+    cutoff = None
 
-# Set device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+    do_train = True
+    input_size = 2
+    hidden_size = 200
+    output_size = 2
+    lr = 0.001
+    n_epochs = 5
+    vis_every = 0
 
-# Initialize model
-model_path = "./model/"
-model_file = "encoder_decoder_0.pt"
-model_path = ""
-if model_path and model_file and os.path.exists(model_path):
-    print(f"Loading model from {model_path}...", end="")
-    model = Seq2SeqAttention(input_size=240, hidden_size=200, output_size=240).to(
-        device
-    )
-    model.load_state_dict(torch.load(model_path + model_file))
-    print("Done")
-else:
-    model = Seq2SeqAttention(input_size=240, hidden_size=200, output_size=240).to(
-        device
-    )
-criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
-# Train model
-do_train = True
-if do_train:
-    MIA_train_losses = train(
-        model, MIA_train_loader, criterion, optimizer, num_epochs=10
-    )
-    plt.plot(MIA_train_losses)
-    plt.show()
-
-# Save model
-do_save = False
-if do_save:
+    do_save = True
     save_path = "./model/"
-    save_file = "encoder_decoder.pt"
-    save_file = "seq2seq_attention.pt"
+    save_file = "encoder_decoder_5.pt"
+    # save_file = "seq2seq_attention.pt"
 
-    print(f"Saving model to {save_path}... ", end="")
-    if not os.path.exists(save_path):
-        os.mkdir(save_path)
-    torch.save(model.state_dict(), save_path + save_file)
-    print("Done")
+    do_evaluate = True
 
-do_evaluate = True
-if do_evaluate:
+    do_visualize = True
+    n_vis = 10
+
+    do_output = True
+    submission_path = "./output/"
+    submission_file = "./EncoderDecoder_MIA.csv"
+
+    # Load data
+    (
+        MIA_train_loader,
+        PIT_train_loader,
+        MIA_valid_loader,
+        PIT_valid_loader,
+        MIA_train_dataset,
+        PIT_train_dataset,
+        MIA_valid_dataset,
+        PIT_valid_dataset,
+    ) = utils.loadData(
+        data_path,
+        city_index_path,
+        batch_size=batch_size,
+        collate_fn=my_collate,
+        cutoff=cutoff,
+    )
+
+    # Set device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    # Initialize model
+    if model_path and model_file and os.path.exists(model_path):
+        print(f"Loading model from {model_path}...", end="")
+        model = EncoderDecoder(input_size, hidden_size, output_size).to(device)
+        model.load_state_dict(torch.load(model_path + model_file))
+        print("Done")
+    else:
+        model = EncoderDecoder(input_size, hidden_size, output_size).to(device)
+
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    # Train model
+    if do_train:
+        MIA_train_losses = train(
+            model,
+            MIA_train_loader,
+            criterion,
+            optimizer,
+            num_epochs=n_epochs,
+            vis_every=vis_every,
+        )
+        plt.plot(MIA_train_losses)
+        plt.show()
+
+    # Save model
+    if do_save:
+        print(f"Saving model to {save_path}... ", end="")
+        if not os.path.exists(save_path):
+            os.mkdir(save_path)
+        torch.save(model.state_dict(), save_path + save_file)
+        print("Done")
+
     # Evaluate model
-    print("Evaluating...", end="")
-    MIA_valid_loss = evaluate(model, MIA_valid_loader, criterion)
-    print(f"MIA validation Loss: {MIA_valid_loss:.4f}")
-    print("Done")
+    if do_evaluate:
+        print("Evaluating...", end="")
+        MIA_valid_loss = evaluate(model, MIA_valid_loader, criterion)
+        print(f"MIA validation Loss: {MIA_valid_loss:.4f}")
+        print("Done")
 
-n_vis = 1
-do_visualize = True
-if do_visualize:
     # Visualize model
-    print("Visualizing...", end="")
-    for i in range(n_vis):
-        inp, tar = next(iter(MIA_valid_loader))
-        u = random.randint(0, inp.size(0) - 1)
-        inp = inp[u : u + 1]
-        tar = tar[u : u + 1]
-        loss = visualize(model, inp, tar)
-    print("Done")
+    if do_visualize:
+        print("Visualizing...", end="")
+        for i in range(n_vis):
+            inp, tar, masks = next(iter(MIA_valid_loader))
+            loss = visualize(model, inp, tar, masks)
+        print("Done")
+
+    if do_output:
+        print("Generating submission...", end="")
+        # Load test data
+
