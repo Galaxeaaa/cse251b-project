@@ -96,17 +96,19 @@ print('Using device:', device)
 
 if mode == "train":
     learning_rate = 1E-3
-    epochs = 10
+    epochs = 1
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
     # model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
 
     optimizer = optim.Adam(model.parameters(),lr = learning_rate)
     criterion = nn.MSELoss()
+    MAE = nn.L1Loss()
 
     model = model.to(device)
     model.train()
     losses = []
+    maes = []
 
     progress_bar = tqdm.tqdm(range(epochs))
 
@@ -138,7 +140,8 @@ if mode == "train":
             loss.backward()
             optimizer.step()
             eloss.append(loss.item())
-            # if i_batch % 10 == 9:
+            if (i_batch+1) % 50 == 0:
+                maes.append(MAE(out,predict).to("cpu").item())
             #     print("Epoch: {} Batch: {} Loss {:.4f}".format(epoch,i_batch+1,loss))  
             # break
         avgloss = sum(eloss)/len(eloss)
@@ -153,7 +156,9 @@ if mode == "train":
             torch.save(model.state_dict(), model_path+str(current_datetime)+'_model_p_'+str(epoch+1)+'.pth')
         # break
     # print(predict,out)
-    plt.plot(losses)
+    plt.plot(maes)
+    plt.xlabel("Batch")
+    plt.ylabel("Loss")
     plt.show()
 
 if mode == "test":
@@ -181,7 +186,7 @@ if mode == "test":
         first_col = inp[:, 0, :2].clone()
         broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
         inp[:, :, :2] -=  broadcasted_first_col
-        
+
         inp, out = inp[:, :, :2], out[:, :, :2]
 
         predict = model(inp,predict_len)

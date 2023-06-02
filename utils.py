@@ -68,9 +68,9 @@ def collate_with_lane(batch):
     out = torch.LongTensor(out)
     mask = [scene["car_mask"] for scene in batch]
     mask = torch.tensor(mask).squeeze()
-    lane = [scene["lane"] for scene in batch]
+    lane = [torch.tensor(scene["lane"]).float() for scene in batch]
     # lane = torch.tensor(lane).squeeze()
-    lane_norm = [scene["lane_norm"] for scene in batch]
+    lane_norm = [torch.tensor(scene["lane_norm"]).float() for scene in batch]
     # lane_norm = torch.tensor(lane_norm).squeeze()
     return [inp, out, mask,lane,lane_norm]
 
@@ -275,4 +275,4 @@ outpath = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-compet
 MIAname = "LSTM3.csv"
 PITname = "LSTM2.csv"
 mergeName = "LTSM_M.csv"
-merge_output = merge_output(datapath,outpath,MIAname,PITname,mergeName)
+# merge_output = merge_output(datapath,outpath,MIAname,PITname,mergeName)

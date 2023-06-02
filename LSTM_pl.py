@@ -17,7 +17,7 @@ class LSTM(nn.Module):
         self.lstm_cell = nn.LSTMCell(input_dim, hidden_dim)
         self.linear = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, input_seq, predict_len,lanes,lane_norms):
+    def forward(self, input_seq, predict_len,lanes,lane_norms,scene_num):
         device = input_seq.device
         
         (batch_size,seq_len,fea_len) = input_seq.shape
@@ -29,10 +29,17 @@ class LSTM(nn.Module):
             input = input_seq[i]
             # for j in range(batch_size):
             # print(lanes[0].shape)
-            nearest_lane,nearest_lane_norm = utils.get_nearest_lane(input,lanes[0],lane_norms[0])
-            nearest_lane_norm = nearest_lane_norm/(torch.norm(nearest_lane_norm, dim=1).unsqueeze(1))
-            input = torch.cat([input,nearest_lane_norm],dim=1)
-
+            idx = 0
+            nearest_lanes,nearest_lane_norms = [],[]
+            for j in range(len(scene_num)):
+                nearest_lane,nearest_lane_norm = utils.get_nearest_lane(input[idx:idx+scene_num[j]],lanes[j],lane_norms[j])
+                nearest_lanes.append(nearest_lane)
+                nearest_lane_norms.append(nearest_lane_norm)
+                idx += scene_num[j]
+            nearest_lanes = torch.cat(nearest_lanes,dim=0)
+            nearest_lane_norms = torch.cat(nearest_lane_norms,dim=0)
+            # nearest_lane_norm = nearest_lane_norm/(torch.norm(nearest_lane_norm, dim=1).unsqueeze(1))
+            input = torch.cat([input,nearest_lane_norms],dim=1)
             h, c = self.lstm_cell(input, (h, c))
 
         for i in range(predict_len):
@@ -62,8 +69,8 @@ def lane2p(lanes,lane_norms):
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
 model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\LSTM_PL\\"
-mode = "test"
-batch_size = 1 # dont change !!! lane over scene could be different
+mode = "train"
+batch_size = 4 # dont change !!! lane over scene could be different
 cutoff = None
 collate_fn = utils.collate_with_lane
 MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = utils.loadData(data_path,city_idx_path,batch_size,split=0.9,cutoff=cutoff,collate_fn=collate_fn)
@@ -139,13 +146,14 @@ if mode == "train":
         for i_batch, sample_batch in enumerate(MIA_train_loader):
             inp, out,mask,lanes,lane_norms = sample_batch # [batch_size, track_sum, seq_len, features]
             # lane_segments = lane2p(lane,lane_norm)
-            # print(mask.shape)
+            scene_num = torch.sum(mask,dim=1).int()
             mask = mask.ravel()
             indices = torch.nonzero(mask).squeeze()
             inp, out = inp.reshape(-1,inp.shape[2],inp.shape[3]).float(),out.reshape(-1,out.shape[2],out.shape[3]).float()
             inp, out = inp[indices],out[indices]
             inp, out = inp.to(device),out.to(device)
-            lanes,lane_norms = torch.tensor(lanes).float().to(device),torch.tensor(lane_norms).float().to(device)
+            lanes = [it.to(device) for it in lanes]
+            lane_norms  = [it.to(device) for it in lane_norms]
             # print(inp.shape,out.shape)
             predict_len = out.shape[1]
             first_col = inp[:, 0, :2].clone()
@@ -155,7 +163,7 @@ if mode == "train":
             inp, out = inp[:, :, :2], out[:, :, :2]
             optimizer.zero_grad()
 
-            predict = model(inp,predict_len,lanes,lane_norms)
+            predict = model(inp,predict_len,lanes,lane_norms,scene_num)
             broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
             predict += broadcasted_first_col
             # print(predict.shape,out.shape)
@@ -230,9 +238,10 @@ if mode == "visual":
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
     model.load_state_dict(torch.load(model_path+'2023-05-25_16-56-20_model_2.pth'))
     model = model.to("cpu")
+    print(model)
 
-    sample_idx = 299
-    traj_idx = 3
+    sample_idx = 199
+    traj_idx = 2
 
     sample = MIA_valid_dataset[sample_idx]
 
