@@ -20,6 +20,10 @@ class LSTM(nn.Module):
     def forward(self, input_seq, predict_len,lanes,lane_norms,scene_num):
         device = input_seq.device
         
+        first_col = input_seq[:, 0, :2].clone()
+        broadcasted_first_col = first_col.unsqueeze(1).expand(-1, input_seq.shape[1], -1)
+        input_seq[:, :, :2] -=  broadcasted_first_col
+
         (batch_size,seq_len,fea_len) = input_seq.shape
         input_seq = input_seq.permute(1,0,2)
         h,c = torch.zeros(batch_size, self.hidden_dim, device=device),torch.zeros(batch_size, self.hidden_dim,device=device)
@@ -39,22 +43,41 @@ class LSTM(nn.Module):
             nearest_lanes = torch.cat(nearest_lanes,dim=0)
             nearest_lane_norms = torch.cat(nearest_lane_norms,dim=0)
             # nearest_lane_norm = nearest_lane_norm/(torch.norm(nearest_lane_norm, dim=1).unsqueeze(1))
-            input = torch.cat([input,nearest_lane_norms],dim=1)
+            # input = torch.cat([input,nearest_lane_norms],dim=1)
+            l = nearest_lanes - nearest_lane_norms/2 -first_col
+            r = nearest_lanes + nearest_lane_norms/2 -first_col
+            # print(l,r)
+            input = torch.cat([input,l,r],dim=1)
             h, c = self.lstm_cell(input, (h, c))
 
         for i in range(predict_len):
             output = self.linear(h)
             outputs.append(output)
 
-            nearest_lane,nearest_lane_norm = utils.get_nearest_lane(output,lanes[0],lane_norms[0])
-            nearest_lane_norm = nearest_lane_norm/(torch.norm(nearest_lane_norm, dim=1).unsqueeze(1))
-            output = torch.cat([output,nearest_lane_norm],dim=1)
+            idx = 0
+            nearest_lanes,nearest_lane_norms = [],[]
+            for j in range(len(scene_num)):
+                nearest_lane,nearest_lane_norm = utils.get_nearest_lane(output[idx:idx+scene_num[j]],lanes[j],lane_norms[j])
+                nearest_lanes.append(nearest_lane)
+                nearest_lane_norms.append(nearest_lane_norm)
+                idx += scene_num[j]
+            nearest_lanes = torch.cat(nearest_lanes,dim=0)
+            nearest_lane_norms = torch.cat(nearest_lane_norms,dim=0)
+            # nearest_lane_norm = nearest_lane_norm/(torch.norm(nearest_lane_norm, dim=1).unsqueeze(1))
+            # input = torch.cat([input,nearest_lane_norms],dim=1)
+            l = nearest_lanes - nearest_lane_norms/2 -first_col
+            r = nearest_lanes + nearest_lane_norms/2 -first_col
+            # print(l,r)
+            output = torch.cat([output,l,r],dim=1)
 
             h, c = self.lstm_cell(output, (h, c))
 
         outputs = torch.stack(outputs, dim=0)
         outputs = outputs.permute(1,0,2)
-        
+
+        broadcasted_first_col = first_col.unsqueeze(1).expand(-1, outputs.shape[1], -1)
+        outputs += broadcasted_first_col
+
         return outputs
     
 def lane2p(lanes,lane_norms):
@@ -75,7 +98,7 @@ cutoff = None
 collate_fn = utils.collate_with_lane
 MIA_train_loader,PIT_train_loader,MIA_valid_loader,PIT_valid_loader,MIA_train_dataset,PIT_train_dataset,MIA_valid_dataset,PIT_valid_dataset = utils.loadData(data_path,city_idx_path,batch_size,split=0.9,cutoff=cutoff,collate_fn=collate_fn)
 
-input_size = 4
+input_size = 6
 hidden_size = 200
 output_size = 2
 
@@ -156,16 +179,16 @@ if mode == "train":
             lane_norms  = [it.to(device) for it in lane_norms]
             # print(inp.shape,out.shape)
             predict_len = out.shape[1]
-            first_col = inp[:, 0, :2].clone()
-            broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
-            inp[:, :, :2] -=  broadcasted_first_col
+            # first_col = inp[:, 0, :2].clone()
+            # broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
+            # inp[:, :, :2] -=  broadcasted_first_col
 
             inp, out = inp[:, :, :2], out[:, :, :2]
             optimizer.zero_grad()
 
             predict = model(inp,predict_len,lanes,lane_norms,scene_num)
-            broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
-            predict += broadcasted_first_col
+            # broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
+            # predict += broadcasted_first_col
             # print(predict.shape,out.shape)
             loss = criterion(out,predict)
             loss.backward()
