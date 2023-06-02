@@ -40,6 +40,9 @@ class LSTM(nn.Module):
 data_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
 city_idx_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\cse251b-project\\"
 model_path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\model\\LSTM_P\\"
+data_path = "./data/"
+city_idx_path = "./"
+model_path = "./model/LSTM_P/"
 mode = "train"
 batch_size = 16
 cutoff = None
@@ -99,7 +102,7 @@ if mode == "train":
     epochs = 1
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    # model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
+    model.load_state_dict(torch.load(model_path + '2023-05-25_18-28-48_model_5.pth'))
 
     optimizer = optim.Adam(model.parameters(),lr = learning_rate)
     criterion = nn.MSELoss()
@@ -163,7 +166,7 @@ if mode == "train":
 
 if mode == "test":
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_18-34-05_model_10.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-25_15-48-23_model_10.pth'))
 
     model = model.to(device)
 
@@ -188,7 +191,6 @@ if mode == "test":
         inp[:, :, :2] -=  broadcasted_first_col
 
         inp, out = inp[:, :, :2], out[:, :, :2]
-
         predict = model(inp,predict_len)
 
         broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
@@ -242,11 +244,11 @@ if mode == "visual":
 if mode == "output":
 
     model = LSTM(input_dim=input_size,hidden_dim=hidden_size,output_dim=output_size)
-    model.load_state_dict(torch.load(model_path+'2023-05-24_14-44-02_model_5.pth'))
+    model.load_state_dict(torch.load(model_path+'2023-05-25_15-48-23_model_10.pth'))
 
     model = model.to(device)
 
-    path = 'C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\val_in\\val_in'
+    path = './data/val_in/val_in'
 
     scence_ids,inp = utils.loadValidData_by_traj(path)
     inp = inp.float().to(device)
@@ -257,13 +259,14 @@ if mode == "output":
     broadcasted_first_col = first_col.unsqueeze(1).expand(-1, inp.shape[1], -1)
     inp[:, :, :2] -=  broadcasted_first_col
 
+    inp = inp[:, :, :2]
     predict = model(inp,predict_len)
 
     broadcasted_first_col = first_col.unsqueeze(1).expand(-1, predict.shape[1], -1)
     predict[:, :, :2] += broadcasted_first_col
 
-    path = "C:\\Users\\zxk\\Desktop\\251B\\class-proj\\ucsd-cse-251b-class-competition\\"
-    name = "LSTM.csv"
+    path = "./output/"
+    name = "LSTM_batch16.csv"
 
     utils.formOutput(path,predict[:,:,:2],scence_ids,name)
 
